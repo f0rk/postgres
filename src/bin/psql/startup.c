@@ -111,8 +111,6 @@ main(int argc, char *argv[])
 	setvbuf(stderr, NULL, _IONBF, 0);
 #endif
 
-	setup_cancel_handler();
-
 	pset.progname = get_progname(argv[0]);
 
 	pset.db = NULL;
@@ -253,8 +251,9 @@ main(int argc, char *argv[])
 	}
 
 	/*
-	 * Now find something to do
+	 * Now find something to do (and handle cancellation, if applicable)
 	 */
+	setup_cancel_handler();
 
 	/*
 	 * process file given by -f

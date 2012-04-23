@@ -1479,6 +1479,24 @@ char *PQoptions(const PGconn *conn);
       </para>
      </listitem>
     </varlistentry>
+
+    <varlistentry id="libpq-pqconnecttimeout">
+     <term>
+      <function>PQconnectTimeout</function>
+      <indexterm>
+       <primary>PQconnectTimeout</primary>
+      </indexterm>
+     </term>
+
+     <listitem>
+      <para>
+       Returns the connect_timeout property as given to libpq.
+<synopsis>
+char *PQconnectTimeout(const PGconn *conn);
+</synopsis>
+      </para>
+     </listitem>
+    </varlistentry>
    </variablelist>
   </para>
 

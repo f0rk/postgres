@@ -163,3 +163,4 @@ PQlibVersion              160
 PQsetRowProcessor         161
 PQgetRowProcessor         162
 PQskipResult              163
+PQconnectTimeout          164

@@ -5191,6 +5191,14 @@ PQoptions(const PGconn *conn)
 	return conn->pgoptions;
 }
 
+char *
+PQconnectTimeout(const PGconn *conn)
+{
+	if (!conn)
+		return NULL;
+	return conn->connect_timeout;
+}
+
 ConnStatusType
 PQstatus(const PGconn *conn)
 {

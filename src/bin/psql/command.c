@@ -1504,7 +1504,7 @@ static bool
 do_connect(char *dbname, char *user, char *host, char *port)
 {
 	PGconn	   *o_conn = pset.db,
-			   *n_conn;
+			   *n_conn = NULL;
 	char	   *password = NULL;
 
 	if (!dbname)
@@ -1537,7 +1537,7 @@ do_connect(char *dbname, char *user, char *host, char *port)
 
 	while (true)
 	{
-#define PARAMS_ARRAY_SIZE	8
+#define PARAMS_ARRAY_SIZE	9
 		const char **keywords = pg_malloc(PARAMS_ARRAY_SIZE * sizeof(*keywords));
 		const char **values = pg_malloc(PARAMS_ARRAY_SIZE * sizeof(*values));
 
@@ -1555,17 +1555,120 @@ do_connect(char *dbname, char *user, char *host, char *port)
 		values[5] = pset.progname;
 		keywords[6] = "client_encoding";
 		values[6] = (pset.notty || getenv("PGCLIENTENCODING")) ? NULL : "auto";
-		keywords[7] = NULL;
-		values[7] = NULL;
+		keywords[7] = "connect_timeout";
+		values[7] = PQconnectTimeout(o_conn);
+		keywords[8] = NULL;
+		values[8] = NULL;
 
-		n_conn = PQconnectdbParams(keywords, values, true);
+		/* attempt connection asynchronously */
+		n_conn = PQconnectStartParams(keywords, values, true);
+
+		if (sigsetjmp(sigint_interrupt_jmp, 1) != 0)
+		{
+			/* interrupted during connection attempt */
+			PQfinish(n_conn);
+			n_conn = NULL;
+		}
+		else
+		{
+			time_t		end_time = -1;
+
+			/*
+			 * maybe use a connection timeout. this code essentially stolen
+			 * from src/interfaces/libpq/fe-connect.c connectDBComplete
+			 */
+			if (PQconnectTimeout(n_conn) != NULL)
+			{
+				int			timeout = atoi(PQconnectTimeout(n_conn));
+				if (timeout > 0)
+				{
+					/*
+					 * Rounding could cause connection to fail; need at least 2 secs
+					 */
+					if (timeout < 2)
+						timeout = 2;
+					/* calculate the finish time based on start + timeout */
+					end_time = time(NULL) + timeout;
+				}
+			}
+
+			while(end_time < 0 || time(NULL) < end_time)
+			{
+				int			poll_res;
+				int			rc;
+				fd_set		read_mask,
+							write_mask;
+				struct timeval timeout;
+				struct timeval *ptr_timeout;
+
+				poll_res = PQconnectPoll(n_conn);
+				if (poll_res == PGRES_POLLING_OK ||
+					poll_res == PGRES_POLLING_FAILED)
+				{
+					break;
+				}
+
+				if (poll_res == PGRES_POLLING_READING)
+					FD_SET(PQsocket(n_conn), &read_mask);
+				if (poll_res == PGRES_POLLING_WRITING)
+					FD_SET(PQsocket(n_conn), &write_mask);
+
+				/*
+				 * Compute appropriate timeout interval. essentially stolen
+				 * from src/interfaces/libpq/fe-misc.c pqSocketPoll. Maybe
+				 * that function could be made public? we could then replace
+				 * the whole inside of this while loop, assuming it is safe
+				 * to longjmp out from there.
+				 */
+				if (end_time == ((time_t) -1))
+					ptr_timeout = NULL;
+				else
+				{
+					time_t      now = time(NULL);
+
+					if (end_time > now)
+						timeout.tv_sec = end_time - now;
+					else
+						timeout.tv_sec = 0;
+					timeout.tv_usec = 0;
+					ptr_timeout = &timeout;
+				}
+
+				sigint_interrupt_enabled = true;
+				if (cancel_pressed)
+				{
+					PQfinish(n_conn);
+					n_conn = NULL;
+					sigint_interrupt_enabled = false;
+					break;
+				}
+				rc = select(PQsocket(n_conn) + 1,
+							&read_mask, &write_mask, NULL,
+							ptr_timeout);
+				sigint_interrupt_enabled = false;
+
+				if (rc < 0 && errno != EINTR)
+					break;
+			}
+
+			if (PQstatus(n_conn) != CONNECTION_OK &&
+				end_time > 0 && time(NULL) >= end_time)
+			{
+				PQfinish(n_conn);
+				n_conn = NULL;
+				fputs(_("timeout expired\n"), stderr);
+			}
+		}
 
 		free(keywords);
 		free(values);
 
 		/* We can immediately discard the password -- no longer needed */
 		if (password)
+		{
 			free(password);
+			password = NULL;
+		}
 
 		if (PQstatus(n_conn) == CONNECTION_OK)
 			break;
@@ -1574,7 +1677,7 @@ do_connect(char *dbname, char *user, char *host, char *port)
 		 * Connection attempt failed; either retry the connection attempt with
 		 * a new password, or give up.
 		 */
-		if (!password && PQconnectionNeedsPassword(n_conn) && pset.getPassword != TRI_NO)
+		if (PQconnectionNeedsPassword(n_conn) && pset.getPassword != TRI_NO)
 		{
 			PQfinish(n_conn);
 			password = prompt_for_password(user);
@@ -1588,7 +1691,8 @@ do_connect(char *dbname, char *user, char *host, char *port)
 		 */
 		if (pset.cur_cmd_interactive)
 		{
-			psql_error("%s", PQerrorMessage(n_conn));
+			if (n_conn)
+				psql_error("%s", PQerrorMessage(n_conn));
 
 			/* pset.db is left unmodified */
 			if (o_conn)
@@ -1596,7 +1700,9 @@ do_connect(char *dbname, char *user, char *host, char *port)
 		}
 		else
 		{
-			psql_error("\\connect: %s", PQerrorMessage(n_conn));
+			if (n_conn)
+				psql_error("\\connect: %s", PQerrorMessage(n_conn));
+
 			if (o_conn)
 			{
 				PQfinish(o_conn);
