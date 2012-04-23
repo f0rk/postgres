@@ -1844,6 +1844,7 @@ _copyRestrictInfo(const RestrictInfo *from)
 	COPY_SCALAR_FIELD(pseudoconstant);
 	COPY_BITMAPSET_FIELD(clause_relids);
 	COPY_BITMAPSET_FIELD(required_relids);
+	COPY_BITMAPSET_FIELD(outer_relids);
 	COPY_BITMAPSET_FIELD(nullable_relids);
 	COPY_BITMAPSET_FIELD(left_relids);
 	COPY_BITMAPSET_FIELD(right_relids);
@@ -2339,6 +2340,7 @@ _copyConstraint(const Constraint *from)
 	COPY_SCALAR_FIELD(deferrable);
 	COPY_SCALAR_FIELD(initdeferred);
 	COPY_LOCATION_FIELD(location);
+	COPY_SCALAR_FIELD(is_no_inherit);
 	COPY_NODE_FIELD(raw_expr);
 	COPY_STRING_FIELD(cooked_expr);
 	COPY_NODE_FIELD(keys);
@@ -2891,6 +2893,7 @@ _copyRenameStmt(const RenameStmt *from)
 	RenameStmt *newnode = makeNode(RenameStmt);
 
 	COPY_SCALAR_FIELD(renameType);
+	COPY_SCALAR_FIELD(relationType);
 	COPY_NODE_FIELD(relation);
 	COPY_NODE_FIELD(object);
 	COPY_NODE_FIELD(objarg);
@@ -3047,6 +3050,7 @@ _copyViewStmt(const ViewStmt *from)
 	COPY_NODE_FIELD(aliases);
 	COPY_NODE_FIELD(query);
 	COPY_SCALAR_FIELD(replace);
+	COPY_NODE_FIELD(options);
 
 	return newnode;
 }
@@ -3650,7 +3654,7 @@ _copyReassignOwnedStmt(const ReassignOwnedStmt *from)
 	ReassignOwnedStmt *newnode = makeNode(ReassignOwnedStmt);
 
 	COPY_NODE_FIELD(roles);
-	COPY_SCALAR_FIELD(newrole);
+	COPY_STRING_FIELD(newrole);
 
 	return newnode;
 }
