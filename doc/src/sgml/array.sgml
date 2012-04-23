@@ -13,6 +13,9 @@
   built-in or user-defined base type, enum type, or composite type
   can be created.
   Arrays of domains are not yet supported.
+  The maximum number of dimensions in a multidimensional array is
+  controlled by the configure option <literal>--with-maxdim</>. The
+  default value is 6.
  </para>
 
  <sect2 id="arrays-declaration">

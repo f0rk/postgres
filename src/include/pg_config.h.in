@@ -842,6 +842,9 @@
    XLOG_BLCKSZ). Changing XLOG_SEG_SIZE requires an initdb. */
 #undef XLOG_SEG_SIZE
 
+/* MAXDIM is the maximum number of dimensions for a multidimensional array. */
+#undef MAXDIM
+
 /* Number of bits in a file offset, on hosts where this is settable. */
 #undef _FILE_OFFSET_BITS
 

@@ -1030,6 +1030,17 @@ su - postgres
       </varlistentry>
 
       <varlistentry>
+       <term><option>--with-maxdim=<replaceable>MAXDIM</replaceable></option></term>
+       <listitem>
+        <para>
+         Set the <firstterm>maximum number of array dimensions</>, an integer.
+         The default, 6, is suitable for most situations; but other values may
+         be useful in special cases.
+        </para>
+       </listitem>
+      </varlistentry>
+
+      <varlistentry>
        <term><option>--disable-spinlocks</option></term>
        <listitem>
         <para>

@@ -372,7 +372,6 @@ typedef uint32 CommandId;
 /*
  * Array indexing support
  */
-#define MAXDIM 6
 typedef struct
 {
 	int			indx[MAXDIM];

@@ -823,6 +823,7 @@ with_blocksize
 with_segsize
 with_wal_blocksize
 with_wal_segsize
+with_maxdim
 with_CC
 enable_depend
 enable_cassert
@@ -1522,6 +1523,7 @@ Optional Packages:
                           set WAL block size in kB [8]
   --with-wal-segsize=SEGSIZE
                           set WAL segment size in MB [16]
+  --with-maxdim=MAXDIM    set maximum array dimensions [6]
   --with-CC=CMD           set compiler (deprecated)
   --with-tcl              build Tcl modules (PL/Tcl)
   --with-tclconfig=DIR    tclConfig.sh is in DIR
@@ -3084,6 +3086,54 @@ $as_echo "${wal_segsize}MB" >&6; }
 
 cat >>confdefs.h <<_ACEOF
 #define XLOG_SEG_SIZE (${wal_segsize} * 1024 * 1024)
+_ACEOF
+
+
+#
+# Array dimensions
+#
+{ $as_echo "$as_me:$LINENO: checking for maximum array dimensions" >&5
+$as_echo_n "checking for maximum array dimensions... " >&6; }
+
+
+
+# Check whether --with-maxdim was given.
+if test "${with_maxdim+set}" = set; then
+  withval=$with_maxdim;
+  case $withval in
+    yes)
+      { { $as_echo "$as_me:$LINENO: error: argument required for --with-maxdim option" >&5
+$as_echo "$as_me: error: argument required for --with-maxdim option" >&2;}
+   { (exit 1); exit 1; }; }
+      ;;
+    no)
+      { { $as_echo "$as_me:$LINENO: error: argument required for --with-maxdim option" >&5
+$as_echo "$as_me: error: argument required for --with-maxdim option" >&2;}
+   { (exit 1); exit 1; }; }
+      ;;
+    *)
+      maxdim=$withval
+      ;;
+  esac
+
+else
+  maxdim=6
+fi
+
+
+echo "$maxdim" | grep -qE '^[0-9]+$' >/dev/null 2>&1
+case $? in
+  0) ;; # everything OK
+  *) { { $as_echo "$as_me:$LINENO: error: Invalid maximum array dimensions. Must be an non-negative integer." >&5
+$as_echo "$as_me: error: Invalid maximum array dimensions. Must be an non-negative integer." >&2;}
+   { (exit 1); exit 1; }; }
+esac
+{ $as_echo "$as_me:$LINENO: result: ${maxdim}" >&5
+$as_echo "${maxdim}" >&6; }
+
+
+cat >>confdefs.h <<_ACEOF
+#define MAXDIM ${maxdim}
 _ACEOF
 
 
