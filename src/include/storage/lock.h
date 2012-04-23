@@ -412,7 +412,7 @@ typedef struct LOCALLOCK
 	int64		nLocks;			/* total number of times lock is held */
 	int			numLockOwners;	/* # of relevant ResourceOwners */
 	int			maxLockOwners;	/* allocated size of array */
-	bool		holdsStrongLockCount;	/* did we bump FastPathStrongLocks? */
+	bool		holdsStrongLockCount;	/* bumped FastPathStrongRelatonLocks? */
 	LOCALLOCKOWNER *lockOwners; /* dynamically resizable array */
 } LOCALLOCK;
 
@@ -489,6 +489,7 @@ extern LockAcquireResult LockAcquireExtended(const LOCKTAG *locktag,
 					bool sessionLock,
 					bool dontWait,
 					bool report_memory_error);
+extern void AbortStrongLockAcquire(void);
 extern bool LockRelease(const LOCKTAG *locktag,
 			LOCKMODE lockmode, bool sessionLock);
 extern void LockReleaseSession(LOCKMETHODID lockmethodid);

@@ -1168,7 +1168,8 @@ RecordTransactionCommit(void)
 	 * Note that at this stage we have marked clog, but still show as running
 	 * in the procarray and continue to hold locks.
 	 */
-	SyncRepWaitForLSN(XactLastRecEnd);
+	if (wrote_xlog)
+		SyncRepWaitForLSN(XactLastRecEnd);
 
 	/* Reset XactLastRecEnd until the next transaction writes something */
 	XactLastRecEnd.xrecoff = 0;
@@ -2258,7 +2259,7 @@ AbortTransaction(void)
 	 * Also clean up any open wait for lock, since the lock manager will choke
 	 * if we try to wait for another lock before doing this.
 	 */
-	LockWaitCancel();
+	LockErrorCleanup();
 
 	/*
 	 * check the current transaction state
@@ -4143,7 +4144,7 @@ AbortSubTransaction(void)
 	AbortBufferIO();
 	UnlockBuffers();
 
-	LockWaitCancel();
+	LockErrorCleanup();
 
 	/*
 	 * check the current transaction state
