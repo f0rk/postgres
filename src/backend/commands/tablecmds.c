@@ -313,6 +313,8 @@ static void change_owner_fix_column_acls(Oid relationOid,
 							 Oid oldOwnerId, Oid newOwnerId);
 static void change_owner_recurse_to_sequences(Oid relationOid,
 								  Oid newOwnerId);
+static void change_owner_recurse_to_inheriting(Oid relationOid,
+								  Oid newOwnerId);
 static void ATExecClusterOn(Relation rel, const char *indexName);
 static void ATExecDropCluster(Relation rel);
 static void ATPrepSetTableSpace(AlteredTableInfo *tab, Relation rel,
@@ -6431,6 +6433,9 @@ ATExecChangeOwner(Oid relationOid, Oid newOwnerId, bool recursing)
 
 			/* If it has dependent sequences, recurse to change them too */
 			change_owner_recurse_to_sequences(relationOid, newOwnerId);
+
+			/* If it has child tables, recurse to change them too */
+			change_owner_recurse_to_inheriting(relationOid, newOwnerId);
 		}
 	}
 
@@ -6571,6 +6576,61 @@ change_owner_recurse_to_sequences(Oid relationOid, Oid newOwnerId)
 	systable_endscan(scan);
 
 	relation_close(depRel, AccessShareLock);
+}
+
+/*
+ * change_owner_recurse_to_inheriting
+ *
+ * Helper function for ATExecChangeOwner.  Examines pg_inherits searching
+ * for tables that inherit from the given children, changing their ownership.
+ */
+static void
+change_owner_recurse_to_inheriting(Oid relationOid, Oid newOwnerId)
+{
+	Relation	inhRel;
+	SysScanDesc scan;
+	ScanKeyData key[2];
+	HeapTuple	tup;
+
+	/*
+	 * Child tables are those entries in pg_inherits whose inhparent is equal
+	 * to the given relationOid.
+	 */
+	inhRel = heap_open(InheritsRelationId, AccessShareLock);
+
+	ScanKeyInit(&key[0],
+				Anum_pg_inherits_inhrelid,
+				BTEqualStrategyNumber, F_OIDEQ,
+				ObjectIdGetDatum(RelationRelationId));
+	ScanKeyInit(&key[1],
+				Anum_pg_inherits_inhparent,
+				BTEqualStrategyNumber, F_OIDEQ,
+				ObjectIdGetDatum(relationOid));
+
+	scan = systable_beginscan(inhRel, InheritsRelidSeqnoIndexId, true,
+							  SnapshotNow, 2, key);
+
+	while (HeapTupleIsValid(tup = systable_getnext(scan)))
+	{
+		Form_pg_inherits inhForm = (Form_pg_inherits) GETSTRUCT(tup);
+		Relation	childRel;
+
+		/* skip anything not related to our target table */
+		if (inhForm->inhparent != relationOid)
+			continue;
+
+		childRel = relation_open(inhForm->relid, AccessExclusiveLock);
+
+		/* We don't need to close the child while we alter it. */
+		ATExecChangeOwner(inhForm->relid, newOwnerId, true);
+
+		/* Now we can close it.  Keep the lock till end of transaction. */
+		relation_close(childRel, NoLock);
+	}
+
+	systable_endscan(scan);
+
+	relation_close(inhRel, AccessShareLock);
 }
 
 /*
