@@ -313,8 +313,6 @@ static void change_owner_fix_column_acls(Oid relationOid,
 							 Oid oldOwnerId, Oid newOwnerId);
 static void change_owner_recurse_to_sequences(Oid relationOid,
 								  Oid newOwnerId, bool isOnly);
-static void change_owner_recurse_to_inheriting(Oid relationOid,
-								  Oid newOwnerId, bool isOnly);
 static void ATExecClusterOn(Relation rel, const char *indexName);
 static void ATExecDropCluster(Relation rel);
 static void ATPrepSetTableSpace(AlteredTableInfo *tab, Relation rel,
@@ -6451,7 +6449,18 @@ ATExecChangeOwner(Oid relationOid, Oid newOwnerId, bool recursing, bool isOnly)
 
 			/* If it has child tables, recurse to change them too */
 			if (!isOnly) {
-				change_owner_recurse_to_inheriting(relationOid, newOwnerId, isOnly);
+				List	   *inheritingOidList;
+				ListCell   *i;
+
+				/* Find all the inheriting children of this relation */
+				inheritingOidList = find_inheritance_children(relationOid,
+															  AccessExclusiveLock);
+
+				/* For each child, recursively change its ownership */
+				foreach(i, inheritingOidList)
+					ATExecChangeOwner(lfirst_oid(i), newOwnerId, true, isOnly);
+
+				list_free(inheritingOidList);
 			}
 		}
 	}
@@ -6593,29 +6602,6 @@ change_owner_recurse_to_sequences(Oid relationOid, Oid newOwnerId, bool isOnly)
 	systable_endscan(scan);
 
 	relation_close(depRel, AccessShareLock);
-}
-
-/*
- * change_owner_recurse_to_inheriting
- *
- * Helper function for ATExecChangeOwner.  Examines pg_inherits searching
- * for tables that inherit from the given children, changing their ownership.
- */
-static void
-change_owner_recurse_to_inheriting(Oid relationOid, Oid newOwnerId, bool isOnly)
-{
-	List	   *inheritingOidList;
-	ListCell   *i;
-
-	/* Find all the inheriting children of this relation */
-	inheritingOidList = find_inheritance_children(relationOid,
-												  AccessExclusiveLock);
-
-	/* For each child, recursively change its ownership */
-	foreach(i, inheritingOidList)
-		ATExecChangeOwner(lfirst_oid(i), newOwnerId, true, isOnly);
-
-	list_free(inheritingOidList);
 }
 
 /*
