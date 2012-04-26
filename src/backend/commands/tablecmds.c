@@ -312,9 +312,9 @@ static void ATPostAlterTypeParse(char *cmd, List **wqueue);
 static void change_owner_fix_column_acls(Oid relationOid,
 							 Oid oldOwnerId, Oid newOwnerId);
 static void change_owner_recurse_to_sequences(Oid relationOid,
-								  Oid newOwnerId);
+								  Oid newOwnerId, bool isOnly);
 static void change_owner_recurse_to_inheriting(Oid relationOid,
-								  Oid newOwnerId);
+								  Oid newOwnerId, bool isOnly);
 static void ATExecClusterOn(Relation rel, const char *indexName);
 static void ATExecDropCluster(Relation rel);
 static void ATPrepSetTableSpace(AlteredTableInfo *tab, Relation rel,
@@ -2459,8 +2459,10 @@ ATPrepCmd(List **wqueue, Relation rel, AlterTableCmd *cmd,
 			pass = AT_PASS_ALTER_TYPE;
 			break;
 		case AT_ChangeOwner:	/* ALTER OWNER */
-			/* This command never recurses */
-			/* No command-specific prep needed */
+			/* Recursion occurs during execution phase */
+			/* No command-specific prep needed except saving recurse flag */
+			if (recurse)
+				cmd->subtype = AT_ChangeOwnerRecurse;
 			pass = AT_PASS_MISC;
 			break;
 		case AT_ClusterOn:		/* CLUSTER ON */
@@ -2665,6 +2667,13 @@ ATExecCmd(List **wqueue, AlteredTableInfo *tab, Relation rel,
 		case AT_ChangeOwner:	/* ALTER OWNER */
 			ATExecChangeOwner(RelationGetRelid(rel),
 							  get_roleid_checked(cmd->name),
+							  false,
+							  true);
+			break;
+		case AT_ChangeOwnerRecurse:	/* ALTER OWNER with recursion */
+			ATExecChangeOwner(RelationGetRelid(rel),
+							  get_roleid_checked(cmd->name),
+							  false,
 							  false);
 			break;
 		case AT_ClusterOn:		/* CLUSTER ON */
@@ -6219,9 +6228,13 @@ ATPostAlterTypeParse(char *cmd, List **wqueue)
  *
  * recursing is also true if ALTER TYPE OWNER is calling us to fix up a
  * free-standing composite type.
+ *
+ * isOnly is true if we are altering this table only (including any sequences
+ * and indexes).  If it is false, this means we should recurse to any tables
+ * which inherit from this one.
  */
 void
-ATExecChangeOwner(Oid relationOid, Oid newOwnerId, bool recursing)
+ATExecChangeOwner(Oid relationOid, Oid newOwnerId, bool recursing, bool isOnly)
 {
 	Relation	target_rel;
 	Relation	class_rel;
@@ -6312,8 +6325,10 @@ ATExecChangeOwner(Oid relationOid, Oid newOwnerId, bool recursing)
 	/*
 	 * If the new owner is the same as the existing owner, consider the
 	 * command to have succeeded.  This is for dump restoration purposes.
+	 * However, if we are potentially altering any child tables, we need
+	 * to keep going.
 	 */
-	if (tuple_class->relowner != newOwnerId)
+	if (tuple_class->relowner != newOwnerId || !isOnly)
 	{
 		Datum		repl_val[Natts_pg_class];
 		bool		repl_null[Natts_pg_class];
@@ -6419,7 +6434,7 @@ ATExecChangeOwner(Oid relationOid, Oid newOwnerId, bool recursing)
 
 			/* For each index, recursively change its ownership */
 			foreach(i, index_oid_list)
-				ATExecChangeOwner(lfirst_oid(i), newOwnerId, true);
+				ATExecChangeOwner(lfirst_oid(i), newOwnerId, true, isOnly);
 
 			list_free(index_oid_list);
 		}
@@ -6429,13 +6444,15 @@ ATExecChangeOwner(Oid relationOid, Oid newOwnerId, bool recursing)
 			/* If it has a toast table, recurse to change its ownership */
 			if (tuple_class->reltoastrelid != InvalidOid)
 				ATExecChangeOwner(tuple_class->reltoastrelid, newOwnerId,
-								  true);
+								  true, isOnly);
 
 			/* If it has dependent sequences, recurse to change them too */
-			change_owner_recurse_to_sequences(relationOid, newOwnerId);
+			change_owner_recurse_to_sequences(relationOid, newOwnerId, isOnly);
 
 			/* If it has child tables, recurse to change them too */
-			change_owner_recurse_to_inheriting(relationOid, newOwnerId);
+			if (!isOnly) {
+				change_owner_recurse_to_inheriting(relationOid, newOwnerId, isOnly);
+			}
 		}
 	}
 
@@ -6517,7 +6534,7 @@ change_owner_fix_column_acls(Oid relationOid, Oid oldOwnerId, Oid newOwnerId)
  * ownership.
  */
 static void
-change_owner_recurse_to_sequences(Oid relationOid, Oid newOwnerId)
+change_owner_recurse_to_sequences(Oid relationOid, Oid newOwnerId, bool isOnly)
 {
 	Relation	depRel;
 	SysScanDesc scan;
@@ -6567,7 +6584,7 @@ change_owner_recurse_to_sequences(Oid relationOid, Oid newOwnerId)
 		}
 
 		/* We don't need to close the sequence while we alter it. */
-		ATExecChangeOwner(depForm->objid, newOwnerId, true);
+		ATExecChangeOwner(depForm->objid, newOwnerId, true, isOnly);
 
 		/* Now we can close it.  Keep the lock till end of transaction. */
 		relation_close(seqRel, NoLock);
@@ -6585,52 +6602,20 @@ change_owner_recurse_to_sequences(Oid relationOid, Oid newOwnerId)
  * for tables that inherit from the given children, changing their ownership.
  */
 static void
-change_owner_recurse_to_inheriting(Oid relationOid, Oid newOwnerId)
+change_owner_recurse_to_inheriting(Oid relationOid, Oid newOwnerId, bool isOnly)
 {
-	Relation	inhRel;
-	SysScanDesc scan;
-	ScanKeyData key[2];
-	HeapTuple	tup;
+	List	   *inheritingOidList;
+	ListCell   *i;
 
-	/*
-	 * Child tables are those entries in pg_inherits whose inhparent is equal
-	 * to the given relationOid.
-	 */
-	inhRel = heap_open(InheritsRelationId, AccessShareLock);
+	/* Find all the inheriting children of this relation */
+	inheritingOidList = find_inheritance_children(relationOid,
+												  AccessExclusiveLock);
 
-	ScanKeyInit(&key[0],
-				Anum_pg_inherits_inhrelid,
-				BTEqualStrategyNumber, F_OIDEQ,
-				ObjectIdGetDatum(RelationRelationId));
-	ScanKeyInit(&key[1],
-				Anum_pg_inherits_inhparent,
-				BTEqualStrategyNumber, F_OIDEQ,
-				ObjectIdGetDatum(relationOid));
+	/* For each child, recursively change its ownership */
+	foreach(i, inheritingOidList)
+		ATExecChangeOwner(lfirst_oid(i), newOwnerId, true, isOnly);
 
-	scan = systable_beginscan(inhRel, InheritsRelidSeqnoIndexId, true,
-							  SnapshotNow, 2, key);
-
-	while (HeapTupleIsValid(tup = systable_getnext(scan)))
-	{
-		Form_pg_inherits inhForm = (Form_pg_inherits) GETSTRUCT(tup);
-		Relation	childRel;
-
-		/* skip anything not related to our target table */
-		if (inhForm->inhparent != relationOid)
-			continue;
-
-		childRel = relation_open(inhForm->relid, AccessExclusiveLock);
-
-		/* We don't need to close the child while we alter it. */
-		ATExecChangeOwner(inhForm->relid, newOwnerId, true);
-
-		/* Now we can close it.  Keep the lock till end of transaction. */
-		relation_close(childRel, NoLock);
-	}
-
-	systable_endscan(scan);
-
-	relation_close(inhRel, AccessShareLock);
+	list_free(inheritingOidList);
 }
 
 /*

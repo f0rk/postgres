@@ -1131,7 +1131,8 @@ typedef enum AlterTableType
 	AT_EnableReplicaRule,		/* ENABLE REPLICA RULE name */
 	AT_DisableRule,				/* DISABLE RULE name */
 	AT_AddInherit,				/* INHERIT parent */
-	AT_DropInherit				/* NO INHERIT parent */
+	AT_DropInherit,				/* NO INHERIT parent */
+	AT_ChangeOwnerRecurse       /* internal to commands/tablecmds.c */
 } AlterTableType;
 
 typedef struct AlterTableCmd	/* one subcommand of an ALTER TABLE */

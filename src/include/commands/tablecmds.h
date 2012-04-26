@@ -24,7 +24,8 @@ extern void RemoveRelations(DropStmt *drop);
 
 extern void AlterTable(AlterTableStmt *stmt);
 
-extern void ATExecChangeOwner(Oid relationOid, Oid newOwnerId, bool recursing);
+extern void ATExecChangeOwner(Oid relationOid, Oid newOwnerId, bool recursing,
+							  bool isOnly);
 
 extern void AlterTableInternal(Oid relid, List *cmds, bool recurse);
 
