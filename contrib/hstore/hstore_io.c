@@ -76,6 +76,10 @@ get_val(HSParser *state, bool ignoreeq, bool *escaped)
 			{
 				elog(ERROR, "Syntax error near '%c' at postion %d", *(state->ptr), (int4) (state->ptr - state->begin));
 			}
+			else if (*(state->ptr) == ',')
+			{
+				elog(ERROR, "Syntax error near '%c' at postion %d", *(state->ptr), (int4) (state->ptr - state->begin));
+			}
 			else if (*(state->ptr) == '\\')
 			{
 				st = GV_WAITESCIN;
