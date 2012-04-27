@@ -74,7 +74,15 @@ get_val(HSParser *state, bool ignoreeq, bool *escaped)
 			}
 			else if (*(state->ptr) == '=' && !ignoreeq)
 			{
-				elog(ERROR, "Syntax error near '%c' at postion %d", *(state->ptr), (int4) (state->ptr - state->begin));
+				/* Empty key is perfectly OK */
+				state->ptr--;
+				return true;
+			}
+			else if (*(state->ptr) == ',' && ignoreeq)
+			{
+				/* Empty value is perfectly OK */
+				state->ptr--;
+				return true;
 			}
 			else if (*(state->ptr) == '\\')
 			{
@@ -191,7 +199,7 @@ parse_hstore(HSParser *state)
 		if (st == WKEY)
 		{
 			if (!get_val(state, false, &escaped))
-				return;
+				return;			/* end of string */
 			if (state->pcur >= state->plen)
 			{
 				state->plen *= 2;
@@ -236,7 +244,10 @@ parse_hstore(HSParser *state)
 		else if (st == WVAL)
 		{
 			if (!get_val(state, true, &escaped))
-				elog(ERROR, "Unexpected end of string");
+			{
+				/* end of string, treat as empty value */
+				state->ptr--;
+			}
 			state->pairs[state->pcur].val = state->word;
 			state->pairs[state->pcur].vallen = hstoreCheckValLen(state->cur - state->word);
 			state->pairs[state->pcur].isnull = false;
