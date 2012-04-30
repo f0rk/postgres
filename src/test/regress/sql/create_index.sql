@@ -859,16 +859,32 @@ RESET enable_bitmapscan;
 DROP TABLE onek_with_null;
 
 --
+-- Check bitmap index path planning
+--
+
+EXPLAIN (COSTS OFF)
+SELECT * FROM tenk1
+  WHERE thousand = 42 AND (tenthous = 1 OR tenthous = 3 OR tenthous = 42);
+SELECT * FROM tenk1
+  WHERE thousand = 42 AND (tenthous = 1 OR tenthous = 3 OR tenthous = 42);
+
+EXPLAIN (COSTS OFF)
+SELECT count(*) FROM tenk1
+  WHERE hundred = 42 AND (thousand = 42 OR thousand = 99);
+SELECT count(*) FROM tenk1
+  WHERE hundred = 42 AND (thousand = 42 OR thousand = 99);
+
+--
 -- Check behavior with duplicate index column contents
 --
 
 CREATE TABLE dupindexcols AS
   SELECT unique1 as id, stringu2::text as f1 FROM tenk1;
 CREATE INDEX dupindexcols_i ON dupindexcols (f1, id, f1 text_pattern_ops);
-VACUUM ANALYZE dupindexcols;
+ANALYZE dupindexcols;
 
 EXPLAIN (COSTS OFF)
   SELECT count(*) FROM dupindexcols
-    WHERE f1 > 'MA' and id < 1000 and f1 ~<~ 'YX';
+    WHERE f1 > 'WA' and id < 1000 and f1 ~<~ 'YX';
 SELECT count(*) FROM dupindexcols
-  WHERE f1 > 'MA' and id < 1000 and f1 ~<~ 'YX';
+  WHERE f1 > 'WA' and id < 1000 and f1 ~<~ 'YX';
