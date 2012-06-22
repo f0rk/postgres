@@ -573,6 +573,33 @@ SELECT * FROM
   This function is described in <xref linkend="functions-srf-subscripts">.
  </para>
 
+ <para>
+  You can also search with arrays using the <literal>@&gt;</>,
+  <literal>&lt;@</>, and <literal>&amp;&amp;</> operators which check
+  whether the left operand contains, is contained by, or overlaps with
+  the right operand, respectively. For instance,
+
+<programlisting>
+SELECT * FROM sal_emp WHERE pay_by_quarter && ARRAY[10000];
+</programlisting>
+
+  Will find all rows where the <structfield>pay_by_quarter</structfield>
+  overlaps with an array containing <literal>10000</>, that is, any
+  employee with a quarterly salary of <literal>10000</> will be matched.
+ </para>
+
+ <para>
+  See <xref linkend="arrays"> for more details about array operator
+  behavior.
+ </para>
+
+ <para>
+  Additionally, a number of operators support indexed operations. This means
+  that the example above could utilize an index to efficiently locate those 
+  employees with the desired quarterly salary. See <xref linkend="indexes-types">
+  for more details about which operators support indexed operations.
+ </para>
+
  <tip>
   <para>
    Arrays are not sets; searching for specific array elements
