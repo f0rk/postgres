@@ -113,7 +113,7 @@ extern HTSU_Result heap_lock_tuple(Relation relation, HeapTuple tuple,
 extern void heap_inplace_update(Relation relation, HeapTuple tuple);
 extern bool heap_freeze_tuple(HeapTupleHeader tuple, TransactionId cutoff_xid);
 extern bool heap_tuple_needs_freeze(HeapTupleHeader tuple, TransactionId cutoff_xid,
-				  Buffer buf);
+						Buffer buf);
 
 extern Oid	simple_heap_insert(Relation relation, HeapTuple tup);
 extern void simple_heap_delete(Relation relation, ItemPointer tid);
@@ -144,6 +144,7 @@ extern XLogRecPtr log_heap_visible(RelFileNode rnode, BlockNumber block,
 				 Buffer vm_buffer, TransactionId cutoff_xid);
 extern XLogRecPtr log_newpage(RelFileNode *rnode, ForkNumber forkNum,
 			BlockNumber blk, Page page);
+extern XLogRecPtr log_newpage_buffer(Buffer buffer);
 
 /* in heap/pruneheap.c */
 extern void heap_page_prune_opt(Relation relation, Buffer buffer,

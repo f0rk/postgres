@@ -157,8 +157,8 @@ typedef XLogLongPageHeaderData *XLogLongPageHeader;
 #define NextLogPage(recptr) \
 	do {	\
 		if ((recptr).xrecoff % XLOG_BLCKSZ != 0)	\
-			(recptr).xrecoff +=	\
-				(XLOG_BLCKSZ - (recptr).xrecoff % XLOG_BLCKSZ);	\
+			(recptr).xrecoff += \
+				(XLOG_BLCKSZ - (recptr).xrecoff % XLOG_BLCKSZ); \
 		if ((recptr).xrecoff >= XLogFileSize) \
 		{	\
 			((recptr).xlogid)++;	\
@@ -282,5 +282,7 @@ extern Datum pg_xlog_replay_pause(PG_FUNCTION_ARGS);
 extern Datum pg_xlog_replay_resume(PG_FUNCTION_ARGS);
 extern Datum pg_is_xlog_replay_paused(PG_FUNCTION_ARGS);
 extern Datum pg_xlog_location_diff(PG_FUNCTION_ARGS);
+extern Datum pg_is_in_backup(PG_FUNCTION_ARGS);
+extern Datum pg_backup_start_time(PG_FUNCTION_ARGS);
 
 #endif   /* XLOG_INTERNAL_H */

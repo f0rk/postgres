@@ -10,12 +10,12 @@
  * the passed-in buffer.  The caller must hold not only a pin, but at least
  * shared buffer content lock on the buffer containing the tuple.
  *
- * NOTE: must check TransactionIdIsInProgress (which looks in PGPROC array)
+ * NOTE: must check TransactionIdIsInProgress (which looks in PGXACT array)
  * before TransactionIdDidCommit/TransactionIdDidAbort (which look in
  * pg_clog).  Otherwise we have a race condition: we might decide that a
  * just-committed transaction crashed, because none of the tests succeed.
  * xact.c is careful to record commit/abort in pg_clog before it unsets
- * MyProc->xid in PGPROC array.  That fixes that problem, but it also
+ * MyPgXact->xid in PGXACT array.  That fixes that problem, but it also
  * means there is a window where TransactionIdIsInProgress and
  * TransactionIdDidCommit will both return true.  If we check only
  * TransactionIdDidCommit, we could consider a tuple committed when a
@@ -1219,6 +1219,46 @@ HeapTupleSatisfiesVacuum(HeapTupleHeader tuple, TransactionId OldestXmin,
 	return HEAPTUPLE_DEAD;
 }
 
+/*
+ * HeapTupleIsSurelyDead
+ *
+ *	Determine whether a tuple is surely dead.  We sometimes use this
+ *	in lieu of HeapTupleSatisifesVacuum when the tuple has just been
+ *	tested by HeapTupleSatisfiesMVCC and, therefore, any hint bits that
+ *	can be set should already be set.  We assume that if no hint bits
+ *	either for xmin or xmax, the transaction is still running.	This is
+ *	therefore faster than HeapTupleSatisfiesVacuum, because we don't
+ *	consult CLOG (and also because we don't need to give an exact answer,
+ *	just whether or not the tuple is surely dead).
+ */
+bool
+HeapTupleIsSurelyDead(HeapTupleHeader tuple, TransactionId OldestXmin)
+{
+	/*
+	 * If the inserting transaction is marked invalid, then it aborted, and
+	 * the tuple is definitely dead.  If it's marked neither committed nor
+	 * invalid, then we assume it's still alive (since the presumption is that
+	 * all relevant hint bits were just set moments ago).
+	 */
+	if (!(tuple->t_infomask & HEAP_XMIN_COMMITTED))
+		return (tuple->t_infomask & HEAP_XMIN_INVALID) != 0 ? true : false;
+
+	/*
+	 * If the inserting transaction committed, but any deleting transaction
+	 * aborted, the tuple is still alive.  Likewise, if XMAX is a lock rather
+	 * than a delete, the tuple is still alive.
+	 */
+	if (tuple->t_infomask &
+		(HEAP_XMAX_INVALID | HEAP_IS_LOCKED | HEAP_XMAX_IS_MULTI))
+		return false;
+
+	/* If deleter isn't known to have committed, assume it's still running. */
+	if (!(tuple->t_infomask & HEAP_XMAX_COMMITTED))
+		return false;
+
+	/* Deleter committed, so tuple is dead if the XID is old enough. */
+	return TransactionIdPrecedes(HeapTupleHeaderGetXmax(tuple), OldestXmin);
+}
 
 /*
  * XidInMVCCSnapshot

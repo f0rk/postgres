@@ -267,7 +267,7 @@ PLy_output_record_funcs(PLyTypeInfo *arg, TupleDesc desc)
 
 	/*
 	 * it should change is_rowtype to 1, so we won't go through this again
-	 * unless the the output record description changes
+	 * unless the output record description changes
 	 */
 	Assert(arg->is_rowtype == 1);
 }
@@ -293,8 +293,8 @@ PLyDict_FromTuple(PLyTypeInfo *info, HeapTuple tuple, TupleDesc desc)
 	PG_TRY();
 	{
 		/*
-		 * Do the work in the scratch context to avoid leaking memory from
-		 * the datatype output function calls.
+		 * Do the work in the scratch context to avoid leaking memory from the
+		 * datatype output function calls.
 		 */
 		MemoryContextSwitchTo(exec_ctx->scratch_ctx);
 		for (i = 0; i < info->in.r.natts; i++)
@@ -341,7 +341,7 @@ PLyDict_FromTuple(PLyTypeInfo *info, HeapTuple tuple, TupleDesc desc)
 Datum
 PLyObject_ToCompositeDatum(PLyTypeInfo *info, TupleDesc desc, PyObject *plrv)
 {
-	Datum	datum;
+	Datum		datum;
 
 	if (PyString_Check(plrv) || PyUnicode_Check(plrv))
 		datum = PLyString_ToComposite(info, desc, plrv);

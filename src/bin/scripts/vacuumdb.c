@@ -135,10 +135,10 @@ main(int argc, char *argv[])
 		}
 	}
 
-	
-	/* 
-	 * Non-option argument specifies database name
-	 * as long as it wasn't already specified with -d / --dbname
+
+	/*
+	 * Non-option argument specifies database name as long as it wasn't
+	 * already specified with -d / --dbname
 	 */
 	if (optind < argc && dbname == NULL)
 	{
@@ -312,7 +312,7 @@ vacuum_all_databases(bool full, bool verbose, bool and_analyze, bool analyze_onl
 	int			i;
 
 	conn = connectMaintenanceDatabase(maintenance_db, host, port,
-						   username, prompt_password, progname);
+									  username, prompt_password, progname);
 	result = executeQuery(conn, "SELECT datname FROM pg_database WHERE datallowconn ORDER BY 1;", progname, echo);
 	PQfinish(conn);
 
@@ -350,10 +350,10 @@ help(const char *progname)
 	printf(_("  -q, --quiet                     don't write any messages\n"));
 	printf(_("  -t, --table='TABLE[(COLUMNS)]'  vacuum specific table only\n"));
 	printf(_("  -v, --verbose                   write a lot of output\n"));
+	printf(_("  -V, --version                   output version information, then exit\n"));
 	printf(_("  -z, --analyze                   update optimizer statistics\n"));
 	printf(_("  -Z, --analyze-only              only update optimizer statistics\n"));
-	printf(_("  --help                          show this help, then exit\n"));
-	printf(_("  --version                       output version information, then exit\n"));
+	printf(_("  -?, --help                      show this help, then exit\n"));
 	printf(_("\nConnection options:\n"));
 	printf(_("  -h, --host=HOSTNAME       database server host or socket directory\n"));
 	printf(_("  -p, --port=PORT           database server port\n"));

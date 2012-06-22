@@ -62,7 +62,7 @@ typedef struct pgstattuple_type
 } pgstattuple_type;
 
 typedef void (*pgstat_page) (pgstattuple_type *, Relation, BlockNumber,
-							 BufferAccessStrategy);
+										 BufferAccessStrategy);
 
 static Datum build_pgstattuple_type(pgstattuple_type *stat,
 					   FunctionCallInfo fcinfo);
@@ -217,7 +217,6 @@ pgstat_relation(Relation rel, FunctionCallInfo fcinfo)
 	{
 		case RELKIND_RELATION:
 		case RELKIND_TOASTVALUE:
-		case RELKIND_UNCATALOGED:
 		case RELKIND_SEQUENCE:
 			return pgstat_heap(rel, fcinfo);
 		case RELKIND_INDEX:

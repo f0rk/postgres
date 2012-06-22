@@ -33,31 +33,35 @@
 
 #include "getopt_long.h"
 
+/* Time to sleep between reconnection attempts */
+#define RECONNECT_SLEEP_TIME 5
+
 /* Global options */
 char	   *basedir = NULL;
 int			verbose = 0;
-int			standby_message_timeout = 10;		/* 10 sec = default */
+int			noloop = 0;
+int			standby_message_timeout = 10 * 1000;		/* 10 sec = default */
 volatile bool time_to_abort = false;
 
 
 static void usage(void);
 static XLogRecPtr FindStreamingStart(XLogRecPtr currentpos, uint32 currenttimeline);
 static void StreamLog();
-static bool segment_callback(XLogRecPtr segendpos, uint32 timeline);
+static bool stop_streaming(XLogRecPtr segendpos, uint32 timeline, bool segment_finished);
 
 static void
 usage(void)
 {
-	printf(_("%s receives PostgreSQL streaming transaction logs\n\n"),
+	printf(_("%s receives PostgreSQL streaming transaction logs.\n\n"),
 		   progname);
 	printf(_("Usage:\n"));
 	printf(_("  %s [OPTION]...\n"), progname);
-	printf(_("\nOptions controlling the output:\n"));
-	printf(_("  -D, --dir=directory       receive xlog files into this directory\n"));
-	printf(_("\nGeneral options:\n"));
-	printf(_("  -v, --verbose             output verbose messages\n"));
-	printf(_("  -?, --help                show this help, then exit\n"));
-	printf(_("  -V, --version             output version information, then exit\n"));
+	printf(_("\nOptions:\n"));
+	printf(_("  -D, --directory=DIR      receive transaction log files into this directory\n"));
+	printf(_("  -n, --noloop             do not loop on connection lost\n"));
+	printf(_("  -v, --verbose            output verbose messages\n"));
+	printf(_("  -V, --version            output version information, then exit\n"));
+	printf(_("  -?, --help               show this help, then exit\n"));
 	printf(_("\nConnection options:\n"));
 	printf(_("  -s, --statusint=INTERVAL time between status packets sent to server (in seconds)\n"));
 	printf(_("  -h, --host=HOSTNAME      database server host or socket directory\n"));
@@ -69,21 +73,12 @@ usage(void)
 }
 
 static bool
-segment_callback(XLogRecPtr segendpos, uint32 timeline)
+stop_streaming(XLogRecPtr segendpos, uint32 timeline, bool segment_finished)
 {
-	if (verbose)
+	if (verbose && segment_finished)
 		fprintf(stderr, _("%s: finished segment at %X/%X (timeline %u)\n"),
 				progname, segendpos.xlogid, segendpos.xrecoff, timeline);
 
-	/*
-	 * Never abort from this - we handle all aborting in continue_streaming()
-	 */
-	return false;
-}
-
-static bool
-continue_streaming(void)
-{
 	if (time_to_abort)
 	{
 		fprintf(stderr, _("%s: received interrupt signal, exiting.\n"),
@@ -96,7 +91,7 @@ continue_streaming(void)
 /*
  * Determine starting location for streaming, based on:
  * 1. If there are existing xlog segments, start at the end of the last one
- *    that is complete (size matches XLogSegSize)
+ *	  that is complete (size matches XLogSegSize)
  * 2. If no valid xlog exists, start from the beginning of the current
  *	  WAL segment.
  */
@@ -194,9 +189,10 @@ FindStreamingStart(XLogRecPtr currentpos, uint32 currenttimeline)
 	if (high_log > 0 || high_seg > 0)
 	{
 		XLogRecPtr	high_ptr;
+
 		/*
-		 * Move the starting pointer to the start of the next segment,
-		 * since the highest one we've seen was completed.
+		 * Move the starting pointer to the start of the next segment, since
+		 * the highest one we've seen was completed.
 		 */
 		NextLogSeg(high_log, high_seg);
 
@@ -223,6 +219,9 @@ StreamLog(void)
 	 * Connect in replication mode to the server
 	 */
 	conn = GetConnection();
+	if (!conn)
+		/* Error message already written in GetConnection() */
+		return;
 
 	/*
 	 * Run IDENTIFY_SYSTEM so we can get the timeline and current xlog
@@ -268,8 +267,8 @@ StreamLog(void)
 				progname, startpos.xlogid, startpos.xrecoff, timeline);
 
 	ReceiveXlogStream(conn, startpos, timeline, NULL, basedir,
-					  segment_callback, continue_streaming,
-					  standby_message_timeout);
+					  stop_streaming,
+					  standby_message_timeout, false);
 
 	PQfinish(conn);
 }
@@ -285,7 +284,6 @@ sigint_handler(int signum)
 {
 	time_to_abort = true;
 }
-
 #endif
 
 int
@@ -294,10 +292,11 @@ main(int argc, char **argv)
 	static struct option long_options[] = {
 		{"help", no_argument, NULL, '?'},
 		{"version", no_argument, NULL, 'V'},
-		{"dir", required_argument, NULL, 'D'},
+		{"directory", required_argument, NULL, 'D'},
 		{"host", required_argument, NULL, 'h'},
 		{"port", required_argument, NULL, 'p'},
 		{"username", required_argument, NULL, 'U'},
+		{"noloop", no_argument, NULL, 'n'},
 		{"no-password", no_argument, NULL, 'w'},
 		{"password", no_argument, NULL, 'W'},
 		{"statusint", required_argument, NULL, 's'},
@@ -326,7 +325,7 @@ main(int argc, char **argv)
 		}
 	}
 
-	while ((c = getopt_long(argc, argv, "D:h:p:U:s:wWv",
+	while ((c = getopt_long(argc, argv, "D:h:p:U:s:nwWv",
 							long_options, &option_index)) != -1)
 	{
 		switch (c)
@@ -356,13 +355,16 @@ main(int argc, char **argv)
 				dbgetpassword = 1;
 				break;
 			case 's':
-				standby_message_timeout = atoi(optarg);
+				standby_message_timeout = atoi(optarg) * 1000;
 				if (standby_message_timeout < 0)
 				{
 					fprintf(stderr, _("%s: invalid status interval \"%s\"\n"),
 							progname, optarg);
 					exit(1);
 				}
+				break;
+			case 'n':
+				noloop = 1;
 				break;
 			case 'v':
 				verbose++;
@@ -406,7 +408,29 @@ main(int argc, char **argv)
 	pqsignal(SIGINT, sigint_handler);
 #endif
 
-	StreamLog();
+	while (true)
+	{
+		StreamLog();
+		if (time_to_abort)
 
-	exit(0);
+			/*
+			 * We've been Ctrl-C'ed. That's not an error, so exit without an
+			 * errorcode.
+			 */
+			exit(0);
+		else if (noloop)
+		{
+			fprintf(stderr, _("%s: disconnected.\n"), progname);
+			exit(1);
+		}
+		else
+		{
+			fprintf(stderr, _("%s: disconnected. Waiting %d seconds to try again\n"),
+					progname, RECONNECT_SLEEP_TIME);
+			pg_usleep(RECONNECT_SLEEP_TIME * 1000000);
+		}
+	}
+
+	/* Never get here */
+	exit(2);
 }

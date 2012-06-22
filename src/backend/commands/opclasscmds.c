@@ -414,8 +414,7 @@ DefineOpClass(CreateOpClassStmt *stmt)
 	/* XXX this is unnecessary given the superuser check above */
 	/* Check we have ownership of the datatype */
 	if (!pg_type_ownercheck(typeoid, GetUserId()))
-		aclcheck_error(ACLCHECK_NOT_OWNER, ACL_KIND_TYPE,
-					   format_type_be(typeoid));
+		aclcheck_error_type(ACLCHECK_NOT_OWNER, typeoid);
 #endif
 
 	/*
@@ -565,8 +564,7 @@ DefineOpClass(CreateOpClassStmt *stmt)
 				/* XXX this is unnecessary given the superuser check above */
 				/* Check we have ownership of the datatype */
 				if (!pg_type_ownercheck(storageoid, GetUserId()))
-					aclcheck_error(ACLCHECK_NOT_OWNER, ACL_KIND_TYPE,
-								   format_type_be(storageoid));
+					aclcheck_error_type(ACLCHECK_NOT_OWNER, storageoid);
 #endif
 				break;
 			default:
@@ -1167,7 +1165,7 @@ assignProcTypes(OpFamilyMember *member, Oid amoid, Oid typeoid)
 			if (procform->prorettype != INT4OID)
 				ereport(ERROR,
 						(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
-						 errmsg("btree comparison procedures must return integer")));
+				 errmsg("btree comparison procedures must return integer")));
 
 			/*
 			 * If lefttype/righttype isn't specified, use the proc's input
@@ -1188,7 +1186,7 @@ assignProcTypes(OpFamilyMember *member, Oid amoid, Oid typeoid)
 			if (procform->prorettype != VOIDOID)
 				ereport(ERROR,
 						(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
-						 errmsg("btree sort support procedures must return void")));
+				  errmsg("btree sort support procedures must return void")));
 
 			/*
 			 * Can't infer lefttype/righttype from proc, so use default rule
@@ -1217,7 +1215,7 @@ assignProcTypes(OpFamilyMember *member, Oid amoid, Oid typeoid)
 
 	/*
 	 * The default in CREATE OPERATOR CLASS is to use the class' opcintype as
-	 * lefttype and righttype.  In CREATE or ALTER OPERATOR FAMILY, opcintype
+	 * lefttype and righttype.	In CREATE or ALTER OPERATOR FAMILY, opcintype
 	 * isn't available, so make the user specify the types.
 	 */
 	if (!OidIsValid(member->lefttype))

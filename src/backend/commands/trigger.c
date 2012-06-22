@@ -199,8 +199,8 @@ CreateTrigger(CreateTrigStmt *stmt, const char *queryString,
 		/*
 		 * We must take a lock on the target relation to protect against
 		 * concurrent drop.  It's not clear that AccessShareLock is strong
-		 * enough, but we certainly need at least that much... otherwise,
-		 * we might end up creating a pg_constraint entry referencing a
+		 * enough, but we certainly need at least that much... otherwise, we
+		 * might end up creating a pg_constraint entry referencing a
 		 * nonexistent table.
 		 */
 		constrrelid = RangeVarGetRelid(stmt->constrrel, AccessShareLock, false);
@@ -494,8 +494,8 @@ CreateTrigger(CreateTrigStmt *stmt, const char *queryString,
 	 * can skip this for internally generated triggers, since the name
 	 * modification above should be sufficient.
 	 *
-	 * NOTE that this is cool only because we have AccessExclusiveLock on
-	 * the relation, so the trigger set won't be changing underneath us.
+	 * NOTE that this is cool only because we have AccessExclusiveLock on the
+	 * relation, so the trigger set won't be changing underneath us.
 	 */
 	if (!isInternal)
 	{
@@ -805,7 +805,7 @@ ConvertTriggerToFK(CreateTrigStmt *stmt, Oid funcoid)
 	char	   *constr_name;
 	char	   *fk_table_name;
 	char	   *pk_table_name;
-	char		fk_matchtype = FKCONSTR_MATCH_UNSPECIFIED;
+	char		fk_matchtype = FKCONSTR_MATCH_SIMPLE;
 	List	   *fk_attrs = NIL;
 	List	   *pk_attrs = NIL;
 	StringInfoData buf;
@@ -831,7 +831,7 @@ ConvertTriggerToFK(CreateTrigStmt *stmt, Oid funcoid)
 			if (strcmp(strVal(arg), "FULL") == 0)
 				fk_matchtype = FKCONSTR_MATCH_FULL;
 			else
-				fk_matchtype = FKCONSTR_MATCH_UNSPECIFIED;
+				fk_matchtype = FKCONSTR_MATCH_SIMPLE;
 			continue;
 		}
 		if (i % 2)
@@ -1168,27 +1168,27 @@ static void
 RangeVarCallbackForRenameTrigger(const RangeVar *rv, Oid relid, Oid oldrelid,
 								 void *arg)
 {
-    HeapTuple       tuple;
-    Form_pg_class   form;
+	HeapTuple	tuple;
+	Form_pg_class form;
 
 	tuple = SearchSysCache1(RELOID, ObjectIdGetDatum(relid));
 	if (!HeapTupleIsValid(tuple))
-		return;                         /* concurrently dropped */
+		return;					/* concurrently dropped */
 	form = (Form_pg_class) GETSTRUCT(tuple);
 
 	/* only tables and views can have triggers */
-    if (form->relkind != RELKIND_RELATION && form->relkind != RELKIND_VIEW)
-        ereport(ERROR,
-                (errcode(ERRCODE_WRONG_OBJECT_TYPE),
-                 errmsg("\"%s\" is not a table or view", rv->relname)));
+	if (form->relkind != RELKIND_RELATION && form->relkind != RELKIND_VIEW)
+		ereport(ERROR,
+				(errcode(ERRCODE_WRONG_OBJECT_TYPE),
+				 errmsg("\"%s\" is not a table or view", rv->relname)));
 
 	/* you must own the table to rename one of its triggers */
-    if (!pg_class_ownercheck(relid, GetUserId()))
-        aclcheck_error(ACLCHECK_NOT_OWNER, ACL_KIND_CLASS, rv->relname);
-    if (!allowSystemTableMods && IsSystemClass(form))
-        ereport(ERROR,
-                (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
-                 errmsg("permission denied: \"%s\" is a system catalog",
+	if (!pg_class_ownercheck(relid, GetUserId()))
+		aclcheck_error(ACLCHECK_NOT_OWNER, ACL_KIND_CLASS, rv->relname);
+	if (!allowSystemTableMods && IsSystemClass(form))
+		ereport(ERROR,
+				(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
+				 errmsg("permission denied: \"%s\" is a system catalog",
 						rv->relname)));
 
 	ReleaseSysCache(tuple);
@@ -4582,39 +4582,30 @@ AfterTriggerSaveEvent(EState *estate, ResultRelInfo *relinfo,
 			continue;
 
 		/*
-		 * If this is an UPDATE of a PK table or FK table that does not change
-		 * the PK or FK respectively, we can skip queuing the event: there is
-		 * no need to fire the trigger.
+		 * If the trigger is a foreign key enforcement trigger, there are
+		 * certain cases where we can skip queueing the event because we can
+		 * tell by inspection that the FK constraint will still pass.
 		 */
 		if (TRIGGER_FIRED_BY_UPDATE(event))
 		{
 			switch (RI_FKey_trigger_type(trigger->tgfoid))
 			{
 				case RI_TRIGGER_PK:
-					/* Update on PK table */
-					if (RI_FKey_keyequal_upd_pk(trigger, rel, oldtup, newtup))
+					/* Update on trigger's PK table */
+					if (!RI_FKey_pk_upd_check_required(trigger, rel,
+													   oldtup, newtup))
 					{
-						/* key unchanged, so skip queuing this event */
+						/* skip queuing this event */
 						continue;
 					}
 					break;
 
 				case RI_TRIGGER_FK:
-
-					/*
-					 * Update on FK table
-					 *
-					 * There is one exception when updating FK tables: if the
-					 * updated row was inserted by our own transaction and the
-					 * FK is deferred, we still need to fire the trigger. This
-					 * is because our UPDATE will invalidate the INSERT so the
-					 * end-of-transaction INSERT RI trigger will not do
-					 * anything, so we have to do the check for the UPDATE
-					 * anyway.
-					 */
-					if (!TransactionIdIsCurrentTransactionId(HeapTupleHeaderGetXmin(oldtup->t_data)) &&
-						RI_FKey_keyequal_upd_fk(trigger, rel, oldtup, newtup))
+					/* Update on trigger's FK table */
+					if (!RI_FKey_fk_upd_check_required(trigger, rel,
+													   oldtup, newtup))
 					{
+						/* skip queuing this event */
 						continue;
 					}
 					break;

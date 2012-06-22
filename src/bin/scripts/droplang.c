@@ -91,10 +91,9 @@ main(int argc, char *argv[])
 	}
 
 	/*
-	 * We set dbname from positional arguments if it is not
-	 * already set by option arguments -d. If not doing
-	 * listlangs, positional dbname must follow positional
-	 * langname.
+	 * We set dbname from positional arguments if it is not already set by
+	 * option arguments -d. If not doing listlangs, positional dbname must
+	 * follow positional langname.
 	 */
 
 	if (argc - optind > 0)
@@ -239,8 +238,8 @@ help(const char *progname)
 	printf(_("  -d, --dbname=DBNAME       database from which to remove the language\n"));
 	printf(_("  -e, --echo                show the commands being sent to the server\n"));
 	printf(_("  -l, --list                show a list of currently installed languages\n"));
-	printf(_("  --help                    show this help, then exit\n"));
-	printf(_("  --version                 output version information, then exit\n"));
+	printf(_("  -V, --version             output version information, then exit\n"));
+	printf(_("  -?, --help                show this help, then exit\n"));
 	printf(_("\nConnection options:\n"));
 	printf(_("  -h, --host=HOSTNAME       database server host or socket directory\n"));
 	printf(_("  -p, --port=PORT           database server port\n"));

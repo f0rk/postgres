@@ -314,6 +314,7 @@ exec_command(const char *cmd,
 			else
 				printf(_("You are connected to database \"%s\" as user \"%s\" on host \"%s\" at port \"%s\".\n"),
 					   db, PQuser(pset.db), host, PQport(pset.db));
+			printSSLInfo();
 		}
 	}
 
@@ -777,7 +778,7 @@ exec_command(const char *cmd,
 
 	/* \i and \ir include files */
 	else if (strcmp(cmd, "i") == 0 || strcmp(cmd, "include") == 0
-			|| strcmp(cmd, "ir") == 0 || strcmp(cmd, "include_relative") == 0)
+		   || strcmp(cmd, "ir") == 0 || strcmp(cmd, "include_relative") == 0)
 	{
 		char	   *fname = psql_scan_slash_option(scan_state,
 												   OT_NORMAL, NULL, true);
@@ -789,7 +790,7 @@ exec_command(const char *cmd,
 		}
 		else
 		{
-			bool	include_relative;
+			bool		include_relative;
 
 			include_relative = (strcmp(cmd, "ir") == 0
 								|| strcmp(cmd, "include_relative") == 0);
@@ -1103,18 +1104,18 @@ exec_command(const char *cmd,
 	else if (strcmp(cmd, "setenv") == 0)
 	{
 		char	   *envvar = psql_scan_slash_option(scan_state,
-												  OT_NORMAL, NULL, false);
+													OT_NORMAL, NULL, false);
 		char	   *envval = psql_scan_slash_option(scan_state,
-												  OT_NORMAL, NULL, false);
+													OT_NORMAL, NULL, false);
 
 		if (!envvar)
 		{
 			psql_error("\\%s: missing required argument\n", cmd);
 			success = false;
 		}
-		else if (strchr(envvar,'=') != NULL)
+		else if (strchr(envvar, '=') != NULL)
 		{
-			psql_error("\\%s: environment variable name must not contain '='\n",
+			psql_error("\\%s: environment variable name must not contain \"=\"\n",
 					   cmd);
 			success = false;
 		}
@@ -1127,16 +1128,17 @@ exec_command(const char *cmd,
 		else
 		{
 			/* Set variable to the value of the next argument */
-			int         len = strlen(envvar) + strlen(envval) + 1;
+			int			len = strlen(envvar) + strlen(envval) + 1;
 			char	   *newval = pg_malloc(len + 1);
 
-			snprintf(newval, len+1, "%s=%s", envvar, envval);
+			snprintf(newval, len + 1, "%s=%s", envvar, envval);
 			putenv(newval);
 			success = true;
+
 			/*
-			 * Do not free newval here, it will screw up the environment
-			 * if you do. See putenv man page for details. That means we
-			 * leak a bit of memory here, but not enough to worry about.
+			 * Do not free newval here, it will screw up the environment if
+			 * you do. See putenv man page for details. That means we leak a
+			 * bit of memory here, but not enough to worry about.
 			 */
 		}
 		free(envvar);
@@ -2152,9 +2154,9 @@ process_file(char *filename, bool single_txn, bool use_relative_path)
 
 		/*
 		 * If we were asked to resolve the pathname relative to the location
-		 * of the currently executing script, and there is one, and this is
-		 * a relative pathname, then prepend all but the last pathname
-		 * component of the current script to this pathname.
+		 * of the currently executing script, and there is one, and this is a
+		 * relative pathname, then prepend all but the last pathname component
+		 * of the current script to this pathname.
 		 */
 		if (use_relative_path && pset.inputfile && !is_absolute_path(filename)
 			&& !has_drive_prefix(filename))
@@ -2513,12 +2515,12 @@ do_pset(const char *param, const char *value, printQueryOpt *popt, bool quiet)
 	else if (strcmp(param, "footer") == 0)
 	{
 		if (value)
-			popt->default_footer = ParseVariableBool(value);
+			popt->topt.default_footer = ParseVariableBool(value);
 		else
-			popt->default_footer = !popt->default_footer;
+			popt->topt.default_footer = !popt->topt.default_footer;
 		if (!quiet)
 		{
-			if (popt->default_footer)
+			if (popt->topt.default_footer)
 				puts(_("Default footer is on."));
 			else
 				puts(_("Default footer is off."));

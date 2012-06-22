@@ -21,6 +21,12 @@
 # we sort a merged commit according to its timestamp on the newest branch
 # it appears in.
 #
+# Typical usage to generate major release notes:
+#   git_changelog --since '2010-07-09 00:00:00' --master-only --oldest-first --details-after
+#
+# To find the branch start date, use:
+#   git show $(git merge-base REL9_0_STABLE master)
+
 
 use strict;
 use warnings;
@@ -32,7 +38,7 @@ require IPC::Open2;
 # (We could get this from "git branches", but not worth the trouble.)
 # NB: master must be first!
 my @BRANCHES = qw(master
-    REL9_1_STABLE REL9_0_STABLE
+    REL9_2_STABLE REL9_1_STABLE REL9_0_STABLE
     REL8_4_STABLE REL8_3_STABLE REL8_2_STABLE REL8_1_STABLE REL8_0_STABLE
     REL7_4_STABLE REL7_3_STABLE REL7_2_STABLE REL7_1_STABLE REL7_0_PATCHES
     REL6_5_PATCHES REL6_4);

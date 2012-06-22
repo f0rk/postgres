@@ -244,7 +244,6 @@ __attribute__((format(PG_PRINTF_ATTRIBUTE, 1, 2)));
 extern char *pgwin32_setlocale(int category, const char *locale);
 
 #define setlocale(a,b) pgwin32_setlocale(a,b)
-
 #endif   /* WIN32 */
 
 /* Portable prompt handling */
@@ -367,7 +366,7 @@ extern char *crypt(const char *key, const char *setting);
 /* WIN32 handled in port/win32.h */
 #ifndef WIN32
 #define pgoff_t off_t
-#if defined(__bsdi__) || defined(__NetBSD__)
+#ifdef __NetBSD__
 extern int	fseeko(FILE *stream, off_t offset, int whence);
 extern off_t ftello(FILE *stream);
 #endif
@@ -378,7 +377,7 @@ extern long pg_lrand48(void);
 extern void pg_srand48(long seed);
 
 #ifndef HAVE_FLS
-extern int fls(int mask);
+extern int	fls(int mask);
 #endif
 
 #ifndef HAVE_FSEEKO
@@ -406,10 +405,6 @@ extern double rint(double x);
 #include <netinet/in.h>
 #include <arpa/inet.h>
 extern int	inet_aton(const char *cp, struct in_addr * addr);
-#endif
-
-#ifndef HAVE_STRDUP
-extern char *strdup(const char *str);
 #endif
 
 #if !HAVE_DECL_STRLCAT

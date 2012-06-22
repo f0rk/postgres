@@ -203,7 +203,8 @@ typedef struct PgStat_MsgDummy
 typedef struct PgStat_MsgInquiry
 {
 	PgStat_MsgHdr m_hdr;
-	TimestampTz inquiry_time;	/* minimum acceptable file timestamp */
+	TimestampTz clock_time;		/* observed local clock time */
+	TimestampTz cutoff_time;	/* minimum acceptable file timestamp */
 } PgStat_MsgInquiry;
 
 
@@ -233,8 +234,8 @@ typedef struct PgStat_MsgTabstat
 	int			m_nentries;
 	int			m_xact_commit;
 	int			m_xact_rollback;
-	PgStat_Counter	  m_block_read_time;
-	PgStat_Counter	  m_block_write_time;
+	PgStat_Counter m_block_read_time;	/* times in microseconds */
+	PgStat_Counter m_block_write_time;
 	PgStat_TableEntry m_entry[PGSTAT_NUM_TABENTRIES];
 } PgStat_MsgTabstat;
 
@@ -366,7 +367,7 @@ typedef struct PgStat_MsgBgWriter
 	PgStat_Counter m_buf_written_backend;
 	PgStat_Counter m_buf_fsync_backend;
 	PgStat_Counter m_buf_alloc;
-	PgStat_Counter m_checkpoint_write_time;
+	PgStat_Counter m_checkpoint_write_time;		/* times in milliseconds */
 	PgStat_Counter m_checkpoint_sync_time;
 } PgStat_MsgBgWriter;
 
@@ -407,8 +408,8 @@ typedef struct PgStat_MsgTempFile
 typedef struct PgStat_FunctionCounts
 {
 	PgStat_Counter f_numcalls;
-	instr_time	f_time;
-	instr_time	f_time_self;
+	instr_time	f_total_time;
+	instr_time	f_self_time;
 } PgStat_FunctionCounts;
 
 /* ----------
@@ -429,8 +430,8 @@ typedef struct PgStat_FunctionEntry
 {
 	Oid			f_id;
 	PgStat_Counter f_numcalls;
-	PgStat_Counter f_time;		/* times in microseconds */
-	PgStat_Counter f_time_self;
+	PgStat_Counter f_total_time;	/* times in microseconds */
+	PgStat_Counter f_self_time;
 } PgStat_FunctionEntry;
 
 /* ----------
@@ -540,11 +541,10 @@ typedef struct PgStat_StatDBEntry
 	PgStat_Counter n_temp_files;
 	PgStat_Counter n_temp_bytes;
 	PgStat_Counter n_deadlocks;
-	PgStat_Counter n_block_read_time;		/* times in microseconds */
+	PgStat_Counter n_block_read_time;	/* times in microseconds */
 	PgStat_Counter n_block_write_time;
 
 	TimestampTz stat_reset_timestamp;
-
 
 	/*
 	 * tables and functions must be last in the struct, because we don't write
@@ -601,8 +601,8 @@ typedef struct PgStat_StatFuncEntry
 
 	PgStat_Counter f_numcalls;
 
-	PgStat_Counter f_time;		/* times in microseconds */
-	PgStat_Counter f_time_self;
+	PgStat_Counter f_total_time;	/* times in microseconds */
+	PgStat_Counter f_self_time;
 } PgStat_StatFuncEntry;
 
 
@@ -630,7 +630,8 @@ typedef struct PgStat_GlobalStats
  * Backend states
  * ----------
  */
-typedef enum BackendState {
+typedef enum BackendState
+{
 	STATE_UNDEFINED,
 	STATE_IDLE,
 	STATE_RUNNING,
@@ -675,7 +676,7 @@ typedef struct PgBackendStatus
 	TimestampTz st_proc_start_timestamp;
 	TimestampTz st_xact_start_timestamp;
 	TimestampTz st_activity_start_timestamp;
-    TimestampTz st_state_start_timestamp;
+	TimestampTz st_state_start_timestamp;
 
 	/* Database OID, owning user's OID, connection client address */
 	Oid			st_databaseid;
@@ -686,8 +687,8 @@ typedef struct PgBackendStatus
 	/* Is backend currently waiting on an lmgr lock? */
 	bool		st_waiting;
 
-    /* current state */
-    BackendState	st_state;
+	/* current state */
+	BackendState st_state;
 
 	/* application name; MUST be null-terminated */
 	char	   *st_appname;
@@ -705,7 +706,7 @@ typedef struct PgStat_FunctionCallUsage
 	/* NULL means we are not tracking the current function call */
 	PgStat_FunctionCounts *fs;
 	/* Total time previously charged to function, as of function start */
-	instr_time	save_f_time;
+	instr_time	save_f_total_time;
 	/* Backend-wide total time as of function start */
 	instr_time	save_total;
 	/* system clock as of function start */
@@ -730,7 +731,7 @@ extern char *pgstat_stat_filename;
 extern PgStat_MsgBgWriter BgWriterStats;
 
 /*
- * Updated by pgstat_count_time_* macros.
+ * Updated by pgstat_count_buffer_*_time macros
  */
 extern PgStat_Counter pgStatBlockReadTime;
 extern PgStat_Counter pgStatBlockWriteTime;

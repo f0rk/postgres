@@ -154,8 +154,7 @@ compute_return_type(TypeName *returnType, Oid languageOid,
 
 	aclresult = pg_type_aclcheck(rettype, GetUserId(), ACL_USAGE);
 	if (aclresult != ACLCHECK_OK)
-		aclcheck_error(aclresult, ACL_KIND_TYPE,
-					   format_type_be(rettype));
+		aclcheck_error_type(aclresult, rettype);
 
 	*prorettype_p = rettype;
 	*returnsSet_p = returnType->setof;
@@ -247,8 +246,7 @@ examine_parameter_list(List *parameters, Oid languageOid,
 
 		aclresult = pg_type_aclcheck(toid, GetUserId(), ACL_USAGE);
 		if (aclresult != ACLCHECK_OK)
-			aclcheck_error(aclresult, ACL_KIND_TYPE,
-						   format_type_be(toid));
+			aclcheck_error_type(aclresult, toid);
 
 		if (t->setof)
 			ereport(ERROR,
@@ -890,9 +888,9 @@ CreateFunction(CreateFunctionStmt *stmt, const char *queryString)
 	ReleaseSysCache(languageTuple);
 
 	/*
-	 * Only superuser is allowed to create leakproof functions because
-	 * it possibly allows unprivileged users to reference invisible tuples
-	 * to be filtered out using views for row-level security.
+	 * Only superuser is allowed to create leakproof functions because it
+	 * possibly allows unprivileged users to reference invisible tuples to be
+	 * filtered out using views for row-level security.
 	 */
 	if (isLeakProof && !superuser())
 		ereport(ERROR,
@@ -978,6 +976,7 @@ CreateFunction(CreateFunctionStmt *stmt, const char *queryString)
 					stmt->replace,
 					returnsSet,
 					prorettype,
+					GetUserId(),
 					languageOid,
 					languageValidator,
 					prosrc_str, /* converted to text later */
@@ -1319,7 +1318,7 @@ AlterFunction(AlterFunctionStmt *stmt)
 		if (intVal(leakproof_item->arg) && !superuser())
 			ereport(ERROR,
 					(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
-					 errmsg("only superuser can define a leakproof function")));
+				  errmsg("only superuser can define a leakproof function")));
 		procForm->proleakproof = intVal(leakproof_item->arg);
 	}
 	if (cost_item)
@@ -1509,13 +1508,11 @@ CreateCast(CreateCastStmt *stmt)
 
 	aclresult = pg_type_aclcheck(sourcetypeid, GetUserId(), ACL_USAGE);
 	if (aclresult != ACLCHECK_OK)
-		aclcheck_error(aclresult, ACL_KIND_TYPE,
-					   format_type_be(sourcetypeid));
+		aclcheck_error_type(aclresult, sourcetypeid);
 
 	aclresult = pg_type_aclcheck(targettypeid, GetUserId(), ACL_USAGE);
 	if (aclresult != ACLCHECK_OK)
-		aclcheck_error(aclresult, ACL_KIND_TYPE,
-					   format_type_be(targettypeid));
+		aclcheck_error_type(aclresult, targettypeid);
 
 	/* Domains are allowed for historical reasons, but we warn */
 	if (sourcetyptype == TYPTYPE_DOMAIN)

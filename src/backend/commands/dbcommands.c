@@ -695,8 +695,8 @@ check_encoding_locale_matches(int encoding, const char *collate, const char *cty
 				 errmsg("encoding \"%s\" does not match locale \"%s\"",
 						pg_encoding_to_char(encoding),
 						ctype),
-			   errdetail("The chosen LC_CTYPE setting requires encoding \"%s\".",
-						 pg_encoding_to_char(ctype_encoding))));
+		   errdetail("The chosen LC_CTYPE setting requires encoding \"%s\".",
+					 pg_encoding_to_char(ctype_encoding))));
 
 	if (!(collate_encoding == encoding ||
 		  collate_encoding == PG_SQL_ASCII ||
@@ -710,8 +710,8 @@ check_encoding_locale_matches(int encoding, const char *collate, const char *cty
 				 errmsg("encoding \"%s\" does not match locale \"%s\"",
 						pg_encoding_to_char(encoding),
 						collate),
-			 errdetail("The chosen LC_COLLATE setting requires encoding \"%s\".",
-					   pg_encoding_to_char(collate_encoding))));
+		 errdetail("The chosen LC_COLLATE setting requires encoding \"%s\".",
+				   pg_encoding_to_char(collate_encoding))));
 }
 
 /* Error cleanup callback for createdb */
@@ -784,7 +784,8 @@ dropdb(const char *dbname, bool missing_ok)
 	/* DROP hook for the database being removed */
 	if (object_access_hook)
 	{
-		ObjectAccessDrop    drop_arg;
+		ObjectAccessDrop drop_arg;
+
 		memset(&drop_arg, 0, sizeof(ObjectAccessDrop));
 		InvokeObjectAccessHook(OAT_DROP,
 							   DatabaseRelationId, db_id, 0, &drop_arg);
@@ -831,8 +832,7 @@ dropdb(const char *dbname, bool missing_ok)
 	ReleaseSysCache(tup);
 
 	/*
-	 * Delete any comments or security labels associated with
-	 * the database.
+	 * Delete any comments or security labels associated with the database.
 	 */
 	DeleteSharedComments(db_id, DatabaseRelationId);
 	DeleteSharedSecurityLabel(db_id, DatabaseRelationId);
@@ -860,18 +860,18 @@ dropdb(const char *dbname, bool missing_ok)
 	pgstat_drop_database(db_id);
 
 	/*
-	 * Tell checkpointer to forget any pending fsync and unlink requests for files
-	 * in the database; else the fsyncs will fail at next checkpoint, or
+	 * Tell checkpointer to forget any pending fsync and unlink requests for
+	 * files in the database; else the fsyncs will fail at next checkpoint, or
 	 * worse, it will delete files that belong to a newly created database
 	 * with the same OID.
 	 */
 	ForgetDatabaseFsyncRequests(db_id);
 
 	/*
-	 * Force a checkpoint to make sure the checkpointer has received the message
-	 * sent by ForgetDatabaseFsyncRequests. On Windows, this also ensures that
-	 * background procs don't hold any open files, which would cause rmdir() to
-	 * fail.
+	 * Force a checkpoint to make sure the checkpointer has received the
+	 * message sent by ForgetDatabaseFsyncRequests. On Windows, this also
+	 * ensures that background procs don't hold any open files, which would
+	 * cause rmdir() to fail.
 	 */
 	RequestCheckpoint(CHECKPOINT_IMMEDIATE | CHECKPOINT_FORCE | CHECKPOINT_WAIT);
 
@@ -1804,20 +1804,21 @@ check_db_file_conflict(Oid db_id)
 static int
 errdetail_busy_db(int notherbackends, int npreparedxacts)
 {
-	/*
-	 * We don't worry about singular versus plural here, since the English
-	 * rules for that don't translate very well.  But we can at least avoid
-	 * the case of zero items.
-	 */
 	if (notherbackends > 0 && npreparedxacts > 0)
+		/* We don't deal with singular versus plural here, since gettext
+		 * doesn't support multiple plurals in one string. */
 		errdetail("There are %d other session(s) and %d prepared transaction(s) using the database.",
 				  notherbackends, npreparedxacts);
 	else if (notherbackends > 0)
-		errdetail("There are %d other session(s) using the database.",
-				  notherbackends);
+		errdetail_plural("There is %d other session using the database.",
+						 "There are %d other sessions using the database.",
+						 notherbackends,
+						 notherbackends);
 	else
-		errdetail("There are %d prepared transaction(s) using the database.",
-				  npreparedxacts);
+		errdetail_plural("There is %d prepared transaction using the database.",
+						 "There are %d prepared transactions using the database.",
+						 npreparedxacts,
+						 npreparedxacts);
 	return 0;					/* just to keep ereport macro happy */
 }
 

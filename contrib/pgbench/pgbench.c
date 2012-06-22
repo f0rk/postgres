@@ -66,7 +66,7 @@
 typedef struct win32_pthread *pthread_t;
 typedef int pthread_attr_t;
 
-static int	pthread_create(pthread_t *thread, pthread_attr_t * attr, void *(*start_routine) (void *), void *arg);
+static int	pthread_create(pthread_t *thread, pthread_attr_t *attr, void *(*start_routine) (void *), void *arg);
 static int	pthread_join(pthread_t th, void **thread_return);
 #elif defined(ENABLE_THREAD_SAFETY)
 /* Use platform-dependent pthread capability */
@@ -84,7 +84,7 @@ static int	pthread_join(pthread_t th, void **thread_return);
 typedef struct fork_pthread *pthread_t;
 typedef int pthread_attr_t;
 
-static int	pthread_create(pthread_t *thread, pthread_attr_t * attr, void *(*start_routine) (void *), void *arg);
+static int	pthread_create(pthread_t *thread, pthread_attr_t *attr, void *(*start_routine) (void *), void *arg);
 static int	pthread_join(pthread_t th, void **thread_return);
 #endif
 
@@ -118,6 +118,11 @@ int			scale = 1;
  * space during inserts and leave 10 percent free.
  */
 int			fillfactor = 100;
+
+/*
+ * create foreign key constraints on the tables?
+ */
+int			foreign_keys = 0;
 
 /*
  * use unlogged tables?
@@ -198,7 +203,7 @@ typedef struct
 	instr_time	start_time;		/* thread start time */
 	instr_time *exec_elapsed;	/* time spent executing cmds (per Command) */
 	int		   *exec_count;		/* number of cmd executions (per Command) */
-	unsigned short random_state[3]; /* separate randomness for each thread */
+	unsigned short random_state[3];		/* separate randomness for each thread */
 } TState;
 
 #define INVALID_THREAD		((pthread_t) 0)
@@ -338,11 +343,13 @@ usage(const char *progname)
 {
 	printf("%s is a benchmarking tool for PostgreSQL.\n\n"
 		   "Usage:\n"
-		   "  %s [OPTIONS]... [DBNAME]\n"
+		   "  %s [OPTION]... [DBNAME]\n"
 		   "\nInitialization options:\n"
 		   "  -i           invokes initialization mode\n"
 		   "  -F NUM       fill factor\n"
 		   "  -s NUM       scaling factor\n"
+		   "  --foreign-keys\n"
+		   "               create foreign key constraints between tables\n"
 		   "  --index-tablespace=TABLESPACE\n"
 		   "               create indexes in the specified tablespace\n"
 		   "  --tablespace=TABLESPACE\n"
@@ -357,7 +364,7 @@ usage(const char *progname)
 		   "  -f FILENAME  read transaction script from FILENAME\n"
 		   "  -j NUM       number of threads (default: 1)\n"
 		   "  -l           write transaction times to log file\n"
-		   "  -M {simple|extended|prepared}\n"
+		   "  -M simple|extended|prepared\n"
 		   "               protocol for submitting queries to server (default: simple)\n"
 		   "  -n           do not run VACUUM before tests\n"
 		   "  -N           do not update tables \"pgbench_tellers\" and \"pgbench_branches\"\n"
@@ -368,12 +375,12 @@ usage(const char *progname)
 		   "  -T NUM       duration of benchmark test in seconds\n"
 		   "  -v           vacuum all four standard tables before tests\n"
 		   "\nCommon options:\n"
-		   "  -d           print debugging output\n"
-		   "  -h HOSTNAME  database server host or socket directory\n"
-		   "  -p PORT      database server port number\n"
-		   "  -U USERNAME  connect as specified database user\n"
-		   "  --help       show this help, then exit\n"
-		   "  --version    output version information, then exit\n"
+		   "  -d             print debugging output\n"
+		   "  -h HOSTNAME    database server host or socket directory\n"
+		   "  -p PORT        database server port number\n"
+		   "  -U USERNAME    connect as specified database user\n"
+		   "  -V, --version  output version information, then exit\n"
+		   "  -?, --help     show this help, then exit\n"
 		   "\n"
 		   "Report bugs to <pgsql-bugs@postgresql.org>.\n",
 		   progname, progname);
@@ -1075,7 +1082,7 @@ top:
 
 			/*
 			 * getrand() neeeds to be able to subtract max from min and add
-			 * one the result without overflowing.  Since we know max > min,
+			 * one the result without overflowing.	Since we know max > min,
 			 * we can detect overflow just by checking for a negative result.
 			 * But we must check both that the subtraction doesn't overflow,
 			 * and that adding one to the result doesn't overflow either.
@@ -1267,16 +1274,17 @@ init(void)
 	 * versions.  Since pgbench has never pretended to be fully TPC-B
 	 * compliant anyway, we stick with the historical behavior.
 	 */
-	struct ddlinfo {
-		char *table;
-		char *cols;
-		int declare_fillfactor;
+	struct ddlinfo
+	{
+		char	   *table;
+		char	   *cols;
+		int			declare_fillfactor;
 	};
 	struct ddlinfo DDLs[] = {
 		{
-			"pgbench_branches",
-			"bid int not null,bbalance int,filler char(88)",
-			1
+			"pgbench_history",
+			"tid int,bid int,aid int,delta int,mtime timestamp,filler char(22)",
+			0
 		},
 		{
 			"pgbench_tellers",
@@ -1289,15 +1297,22 @@ init(void)
 			1
 		},
 		{
-			"pgbench_history",
-			"tid int,bid int,aid int,delta int,mtime timestamp,filler char(22)",
-			0
+			"pgbench_branches",
+			"bid int not null,bbalance int,filler char(88)",
+			1
 		}
 	};
 	static char *DDLAFTERs[] = {
 		"alter table pgbench_branches add primary key (bid)",
 		"alter table pgbench_tellers add primary key (tid)",
 		"alter table pgbench_accounts add primary key (aid)"
+	};
+	static char *DDLKEYs[] = {
+		"alter table pgbench_tellers add foreign key (bid) references pgbench_branches",
+		"alter table pgbench_accounts add foreign key (bid) references pgbench_branches",
+		"alter table pgbench_history add foreign key (bid) references pgbench_branches",
+		"alter table pgbench_history add foreign key (tid) references pgbench_tellers",
+		"alter table pgbench_history add foreign key (aid) references pgbench_accounts"
 	};
 
 	PGconn	   *con;
@@ -1321,15 +1336,16 @@ init(void)
 		/* Construct new create table statement. */
 		opts[0] = '\0';
 		if (ddl->declare_fillfactor)
-			snprintf(opts+strlen(opts), 256-strlen(opts),
-				" with (fillfactor=%d)", fillfactor);
+			snprintf(opts + strlen(opts), 256 - strlen(opts),
+					 " with (fillfactor=%d)", fillfactor);
 		if (tablespace != NULL)
 		{
-			char *escape_tablespace;
+			char	   *escape_tablespace;
+
 			escape_tablespace = PQescapeIdentifier(con, tablespace,
 												   strlen(tablespace));
-			snprintf(opts+strlen(opts), 256-strlen(opts),
-				" tablespace %s", escape_tablespace);
+			snprintf(opts + strlen(opts), 256 - strlen(opts),
+					 " tablespace %s", escape_tablespace);
 			PQfreemem(escape_tablespace);
 		}
 		snprintf(buffer, 256, "create%s table %s(%s)%s",
@@ -1401,24 +1417,37 @@ init(void)
 	/*
 	 * create indexes
 	 */
-	fprintf(stderr, "set primary key...\n");
+	fprintf(stderr, "set primary keys...\n");
 	for (i = 0; i < lengthof(DDLAFTERs); i++)
 	{
-		char	buffer[256];
+		char		buffer[256];
 
 		strncpy(buffer, DDLAFTERs[i], 256);
 
 		if (index_tablespace != NULL)
 		{
-			char *escape_tablespace;
+			char	   *escape_tablespace;
+
 			escape_tablespace = PQescapeIdentifier(con, index_tablespace,
 												   strlen(index_tablespace));
-			snprintf(buffer+strlen(buffer), 256-strlen(buffer),
-				" using index tablespace %s", escape_tablespace);
+			snprintf(buffer + strlen(buffer), 256 - strlen(buffer),
+					 " using index tablespace %s", escape_tablespace);
 			PQfreemem(escape_tablespace);
 		}
 
 		executeStatement(con, buffer);
+	}
+
+	/*
+	 * create foreign keys
+	 */
+	if (foreign_keys)
+	{
+		fprintf(stderr, "set foreign keys...\n");
+		for (i = 0; i < lengthof(DDLKEYs); i++)
+		{
+			executeStatement(con, DDLKEYs[i]);
+		}
 	}
 
 	/* vacuum */
@@ -1861,10 +1890,11 @@ main(int argc, char **argv)
 	int			i;
 
 	static struct option long_options[] = {
-			{"index-tablespace", required_argument, NULL, 3},
-			{"tablespace", required_argument, NULL, 2},
-			{"unlogged-tables", no_argument, &unlogged_tables, 1},
-			{NULL, 0, NULL, 0}
+		{"foreign-keys", no_argument, &foreign_keys, 1},
+		{"index-tablespace", required_argument, NULL, 3},
+		{"tablespace", required_argument, NULL, 2},
+		{"unlogged-tables", no_argument, &unlogged_tables, 1},
+		{NULL, 0, NULL, 0}
 	};
 
 #ifdef HAVE_GETRLIMIT
@@ -2065,10 +2095,10 @@ main(int argc, char **argv)
 			case 0:
 				/* This covers long options which take no argument. */
 				break;
-			case 2:							/* tablespace */
+			case 2:				/* tablespace */
 				tablespace = optarg;
 				break;
-			case 3:							/* index-tablespace */
+			case 3:				/* index-tablespace */
 				index_tablespace = optarg;
 				break;
 			default:
@@ -2571,7 +2601,7 @@ typedef struct fork_pthread
 
 static int
 pthread_create(pthread_t *thread,
-			   pthread_attr_t * attr,
+			   pthread_attr_t *attr,
 			   void *(*start_routine) (void *),
 			   void *arg)
 {
@@ -2687,7 +2717,7 @@ win32_pthread_run(void *arg)
 
 static int
 pthread_create(pthread_t *thread,
-			   pthread_attr_t * attr,
+			   pthread_attr_t *attr,
 			   void *(*start_routine) (void *),
 			   void *arg)
 {

@@ -186,10 +186,10 @@ merge_acl_with_grant(Acl *old_acl, bool is_grant,
 
 	foreach(j, grantees)
 	{
-		AclItem aclitem;
+		AclItem		aclitem;
 		Acl		   *newer_acl;
 
-		aclitem.	ai_grantee = lfirst_oid(j);
+		aclitem.ai_grantee = lfirst_oid(j);
 
 		/*
 		 * Grant options can only be granted to individual roles, not PUBLIC.
@@ -202,7 +202,7 @@ merge_acl_with_grant(Acl *old_acl, bool is_grant,
 					(errcode(ERRCODE_INVALID_GRANT_OPERATION),
 					 errmsg("grant options can only be granted to roles")));
 
-		aclitem.	ai_grantor = grantorId;
+		aclitem.ai_grantor = grantorId;
 
 		/*
 		 * The asymmetry in the conditions here comes from the spec.  In
@@ -3073,7 +3073,7 @@ ExecGrant_Type(InternalGrant *istmt)
 			ereport(ERROR,
 					(errcode(ERRCODE_INVALID_GRANT_OPERATION),
 					 errmsg("cannot set privileges of array types"),
-					 errhint("Set the privileges of the element type instead.")));
+				errhint("Set the privileges of the element type instead.")));
 
 		/* Used GRANT DOMAIN on a non-domain? */
 		if (istmt->objtype == ACL_OBJECT_DOMAIN &&
@@ -3386,6 +3386,19 @@ aclcheck_error_col(AclResult aclerr, AclObjectKind objectkind,
 			elog(ERROR, "unrecognized AclResult: %d", (int) aclerr);
 			break;
 	}
+}
+
+
+/*
+ * Special common handling for types: use element type instead of array type,
+ * and format nicely
+ */
+void
+aclcheck_error_type(AclResult aclerr, Oid typeOid)
+{
+	Oid element_type = get_element_type(typeOid);
+
+	aclcheck_error(aclerr, ACL_KIND_TYPE, format_type_be(element_type ? element_type : typeOid));
 }
 
 
@@ -4184,7 +4197,7 @@ pg_type_aclmask(Oid type_oid, Oid roleid, AclMode mask, AclMaskHow how)
 	/* "True" array types don't manage permissions of their own */
 	if (typeForm->typelem != 0 && typeForm->typlen == -1)
 	{
-		Oid		elttype_oid = typeForm->typelem;
+		Oid			elttype_oid = typeForm->typelem;
 
 		ReleaseSysCache(tuple);
 

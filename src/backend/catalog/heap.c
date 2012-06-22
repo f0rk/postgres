@@ -242,26 +242,13 @@ heap_create(const char *relname,
 			char relkind,
 			char relpersistence,
 			bool shared_relation,
-			bool mapped_relation,
-			bool allow_system_table_mods)
+			bool mapped_relation)
 {
 	bool		create_storage;
 	Relation	rel;
 
 	/* The caller must have provided an OID for the relation. */
 	Assert(OidIsValid(relid));
-
-	/*
-	 * sanity checks
-	 */
-	if (!allow_system_table_mods &&
-		(IsSystemNamespace(relnamespace) || IsToastNamespace(relnamespace)) &&
-		IsNormalProcessingMode())
-		ereport(ERROR,
-				(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
-				 errmsg("permission denied to create \"%s.%s\"",
-						get_namespace_name(relnamespace), relname),
-		errdetail("System catalog modifications are currently disallowed.")));
 
 	/*
 	 * Decide if we need storage or not, and handle a couple other special
@@ -327,7 +314,8 @@ heap_create(const char *relname,
 									 reltablespace,
 									 shared_relation,
 									 mapped_relation,
-									 relpersistence);
+									 relpersistence,
+									 relkind);
 
 	/*
 	 * Have the storage manager create the relation's disk file, if needed.
@@ -889,7 +877,6 @@ AddNewRelationTuple(Relation pg_class_desc,
 	new_rel_reltup->relowner = relowner;
 	new_rel_reltup->reltype = new_type_oid;
 	new_rel_reltup->reloftype = reloftype;
-	new_rel_reltup->relkind = relkind;
 
 	new_rel_desc->rd_att->tdtypeid = new_type_oid;
 
@@ -1124,8 +1111,7 @@ heap_create_with_catalog(const char *relname,
 							   relkind,
 							   relpersistence,
 							   shared_relation,
-							   mapped_relation,
-							   allow_system_table_mods);
+							   mapped_relation);
 
 	Assert(relid == RelationGetRelid(new_rel_desc));
 
@@ -1306,24 +1292,10 @@ heap_create_with_catalog(const char *relname,
 	if (oncommit != ONCOMMIT_NOOP)
 		register_on_commit_action(relid, oncommit);
 
-	/*
-	 * If this is an unlogged relation, it needs an init fork so that it can
-	 * be correctly reinitialized on restart.  Since we're going to do an
-	 * immediate sync, we only need to xlog this if archiving or streaming is
-	 * enabled.  And the immediate sync is required, because otherwise there's
-	 * no guarantee that this will hit the disk before the next checkpoint
-	 * moves the redo pointer.
-	 */
 	if (relpersistence == RELPERSISTENCE_UNLOGGED)
 	{
 		Assert(relkind == RELKIND_RELATION || relkind == RELKIND_TOASTVALUE);
-
-		RelationOpenSmgr(new_rel_desc);
-		smgrcreate(new_rel_desc->rd_smgr, INIT_FORKNUM, false);
-		if (XLogIsNeeded())
-			log_smgrcreate(&new_rel_desc->rd_smgr->smgr_rnode.node,
-						   INIT_FORKNUM);
-		smgrimmedsync(new_rel_desc->rd_smgr, INIT_FORKNUM);
+		heap_create_init_fork(new_rel_desc);
 	}
 
 	/*
@@ -1336,6 +1308,22 @@ heap_create_with_catalog(const char *relname,
 	return relid;
 }
 
+/*
+ * Set up an init fork for an unlogged table so that it can be correctly
+ * reinitialized on restart.  Since we're going to do an immediate sync, we
+ * only need to xlog this if archiving or streaming is enabled.  And the
+ * immediate sync is required, because otherwise there's no guarantee that
+ * this will hit the disk before the next checkpoint moves the redo pointer.
+ */
+void
+heap_create_init_fork(Relation rel)
+{
+	RelationOpenSmgr(rel);
+	smgrcreate(rel->rd_smgr, INIT_FORKNUM, false);
+	if (XLogIsNeeded())
+		log_smgrcreate(&rel->rd_smgr->smgr_rnode.node, INIT_FORKNUM);
+	smgrimmedsync(rel->rd_smgr, INIT_FORKNUM);
+}
 
 /*
  *		RelationRemoveInheritance
@@ -1955,7 +1943,7 @@ StoreRelCheck(Relation rel, char *ccname, Node *expr,
 						  ccsrc,	/* Source form of check constraint */
 						  is_local,		/* conislocal */
 						  inhcount,		/* coninhcount */
-						  is_no_inherit);	/* connoinherit */
+						  is_no_inherit);		/* connoinherit */
 
 	pfree(ccbin);
 	pfree(ccsrc);
@@ -1996,7 +1984,7 @@ StoreConstraints(Relation rel, List *cooked_constraints)
 				break;
 			case CONSTR_CHECK:
 				StoreRelCheck(rel, con->name, con->expr, !con->skip_validation,
-							  con->is_local, con->inhcount, con->is_no_inherit);
+						   con->is_local, con->inhcount, con->is_no_inherit);
 				numchecks++;
 				break;
 			default:
@@ -2343,8 +2331,8 @@ MergeWithExistingConstraint(Relation rel, char *ccname, Node *expr,
 			}
 			/* OK to update the tuple */
 			ereport(NOTICE,
-					(errmsg("merging constraint \"%s\" with inherited definition",
-							ccname)));
+			   (errmsg("merging constraint \"%s\" with inherited definition",
+					   ccname)));
 			simple_heap_update(conDesc, &tup->t_self, tup);
 			CatalogUpdateIndexes(conDesc, tup);
 			break;

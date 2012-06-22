@@ -2409,7 +2409,8 @@ RelationBuildLocalRelation(const char *relname,
 						   Oid reltablespace,
 						   bool shared_relation,
 						   bool mapped_relation,
-						   char relpersistence)
+						   char relpersistence,
+						   char relkind)
 {
 	Relation	rel;
 	MemoryContext oldcxt;
@@ -2515,7 +2516,7 @@ RelationBuildLocalRelation(const char *relname,
 	namestrcpy(&rel->rd_rel->relname, relname);
 	rel->rd_rel->relnamespace = relnamespace;
 
-	rel->rd_rel->relkind = RELKIND_UNCATALOGED;
+	rel->rd_rel->relkind = relkind;
 	rel->rd_rel->relhasoids = rel->rd_att->tdhasoid;
 	rel->rd_rel->relnatts = natts;
 	rel->rd_rel->reltype = InvalidOid;
@@ -2540,7 +2541,7 @@ RelationBuildLocalRelation(const char *relname,
 
 	/*
 	 * Insert relation physical and logical identifiers (OIDs) into the right
-	 * places.  For a mapped relation, we set relfilenode to zero and rely on
+	 * places.	For a mapped relation, we set relfilenode to zero and rely on
 	 * RelationInitPhysicalAddr to consult the map.
 	 */
 	rel->rd_rel->relisshared = shared_relation;
@@ -3365,9 +3366,9 @@ RelationGetIndexList(Relation relation)
 		result = insert_ordered_oid(result, index->indexrelid);
 
 		/*
-		 * indclass cannot be referenced directly through the C struct, because
-		 * it comes after the variable-width indkey field.  Must extract the
-		 * datum the hard way...
+		 * indclass cannot be referenced directly through the C struct,
+		 * because it comes after the variable-width indkey field.	Must
+		 * extract the datum the hard way...
 		 */
 		indclassDatum = heap_getattr(htup,
 									 Anum_pg_index_indclass,
@@ -4514,8 +4515,8 @@ RelationCacheInitFilePreInvalidate(void)
 		/*
 		 * The file might not be there if no backend has been started since
 		 * the last removal.  But complain about failures other than ENOENT.
-		 * Fortunately, it's not too late to abort the transaction if we
-		 * can't get rid of the would-be-obsolete init file.
+		 * Fortunately, it's not too late to abort the transaction if we can't
+		 * get rid of the would-be-obsolete init file.
 		 */
 		if (errno != ENOENT)
 			ereport(ERROR,

@@ -278,7 +278,7 @@ extern AclMode pg_foreign_data_wrapper_aclmask(Oid fdw_oid, Oid roleid,
 extern AclMode pg_foreign_server_aclmask(Oid srv_oid, Oid roleid,
 						  AclMode mask, AclMaskHow how);
 extern AclMode pg_type_aclmask(Oid type_oid, Oid roleid,
-						  AclMode mask, AclMaskHow how);
+				AclMode mask, AclMaskHow how);
 
 extern AclResult pg_attribute_aclcheck(Oid table_oid, AttrNumber attnum,
 					  Oid roleid, AclMode mode);
@@ -301,6 +301,8 @@ extern void aclcheck_error(AclResult aclerr, AclObjectKind objectkind,
 
 extern void aclcheck_error_col(AclResult aclerr, AclObjectKind objectkind,
 				   const char *objectname, const char *colname);
+
+extern void aclcheck_error_type(AclResult aclerr, Oid typeOid);
 
 /* ownercheck routines just return true (owner) or false (not) */
 extern bool pg_class_ownercheck(Oid class_oid, Oid roleid);

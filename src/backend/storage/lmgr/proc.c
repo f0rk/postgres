@@ -56,7 +56,7 @@ int			DeadlockTimeout = 1000;
 int			StatementTimeout = 0;
 bool		log_lock_waits = false;
 
-/* Pointer to this process's PGPROC struct, if any */
+/* Pointer to this process's PGPROC and PGXACT structs, if any */
 PGPROC	   *MyProc = NULL;
 PGXACT	   *MyPgXact = NULL;
 
@@ -70,9 +70,9 @@ PGXACT	   *MyPgXact = NULL;
 NON_EXEC_STATIC slock_t *ProcStructLock = NULL;
 
 /* Pointers to shared-memory structures */
-PROC_HDR *ProcGlobal = NULL;
+PROC_HDR   *ProcGlobal = NULL;
 NON_EXEC_STATIC PGPROC *AuxiliaryProcs = NULL;
-PGPROC *PreparedXactProcs = NULL;
+PGPROC	   *PreparedXactProcs = NULL;
 
 /* If we are waiting for a lock, this points to the associated LOCALLOCK */
 static LOCALLOCK *lockAwaited = NULL;
@@ -186,18 +186,15 @@ InitProcGlobal(void)
 	ProcGlobal->startupProc = NULL;
 	ProcGlobal->startupProcPid = 0;
 	ProcGlobal->startupBufferPinWaitBufId = -1;
-	ProcGlobal->bgwriterLatch = NULL;
+	ProcGlobal->walwriterLatch = NULL;
+	ProcGlobal->checkpointerLatch = NULL;
 
 	/*
-	 * Create and initialize all the PGPROC structures we'll need (except for
-	 * those used for 2PC, which are embedded within a GlobalTransactionData
-	 * struct).
-	 *
-	 * There are four separate consumers of PGPROC structures: (1) normal
-	 * backends, (2) autovacuum workers and the autovacuum launcher, (3)
-	 * auxiliary processes, and (4) prepared transactions.  Each PGPROC
-	 * structure is dedicated to exactly one of these purposes, and they do
-	 * not move between groups.
+	 * Create and initialize all the PGPROC structures we'll need.  There are
+	 * four separate consumers: (1) normal backends, (2) autovacuum workers
+	 * and the autovacuum launcher, (3) auxiliary processes, and (4) prepared
+	 * transactions.  Each PGPROC structure is dedicated to exactly one of
+	 * these purposes, and they do not move between groups.
 	 */
 	procs = (PGPROC *) ShmemAlloc(TotalProcs * sizeof(PGPROC));
 	ProcGlobal->allProcs = procs;
@@ -213,7 +210,7 @@ InitProcGlobal(void)
 	 * from the main PGPROC array so that the most heavily accessed data is
 	 * stored contiguously in memory in as few cache lines as possible. This
 	 * provides significant performance benefits, especially on a
-	 * multiprocessor system.  Thereis one PGXACT structure for every PGPROC
+	 * multiprocessor system.  There is one PGXACT structure for every PGPROC
 	 * structure.
 	 */
 	pgxacts = (PGXACT *) ShmemAlloc(TotalProcs * sizeof(PGXACT));
@@ -225,9 +222,9 @@ InitProcGlobal(void)
 		/* Common initialization for all PGPROCs, regardless of type. */
 
 		/*
-		 * Set up per-PGPROC semaphore, latch, and backendLock. Prepared
-		 * xact dummy PGPROCs don't need these though - they're never
-		 * associated with a real process
+		 * Set up per-PGPROC semaphore, latch, and backendLock. Prepared xact
+		 * dummy PGPROCs don't need these though - they're never associated
+		 * with a real process
 		 */
 		if (i < MaxBackends + NUM_AUXILIARY_PROCS)
 		{
@@ -238,12 +235,12 @@ InitProcGlobal(void)
 		procs[i].pgprocno = i;
 
 		/*
-		 * Newly created PGPROCs for normal backends or for autovacuum must
-		 * be queued up on the appropriate free list.  Because there can only
-		 * ever be a small, fixed number of auxiliary processes, no free
-		 * list is used in that case; InitAuxiliaryProcess() instead uses a
-		 * linear search.  PGPROCs for prepared transactions are added to a
-		 * free list by TwoPhaseShmemInit().
+		 * Newly created PGPROCs for normal backends or for autovacuum must be
+		 * queued up on the appropriate free list.	Because there can only
+		 * ever be a small, fixed number of auxiliary processes, no free list
+		 * is used in that case; InitAuxiliaryProcess() instead uses a linear
+		 * search.	PGPROCs for prepared transactions are added to a free list
+		 * by TwoPhaseShmemInit().
 		 */
 		if (i < MaxConnections)
 		{
@@ -264,8 +261,8 @@ InitProcGlobal(void)
 	}
 
 	/*
-	 * Save pointers to the blocks of PGPROC structures reserved for
-	 * auxiliary processes and prepared transactions.
+	 * Save pointers to the blocks of PGPROC structures reserved for auxiliary
+	 * processes and prepared transactions.
 	 */
 	AuxiliaryProcs = &procs[MaxBackends];
 	PreparedXactProcs = &procs[MaxBackends + NUM_AUXILIARY_PROCS];
@@ -343,8 +340,8 @@ InitProcess(void)
 		MarkPostmasterChildActive();
 
 	/*
-	 * Initialize all fields of MyProc, except for those previously initialized
-	 * by InitProcGlobal.
+	 * Initialize all fields of MyProc, except for those previously
+	 * initialized by InitProcGlobal.
 	 */
 	SHMQueueElemInit(&(MyProc->links));
 	MyProc->waitStatus = STATUS_OK;
@@ -369,7 +366,7 @@ InitProcess(void)
 #ifdef USE_ASSERT_CHECKING
 	if (assert_enabled)
 	{
-		int i;
+		int			i;
 
 		/* Last process should have released all locks. */
 		for (i = 0; i < NUM_LOCK_PARTITIONS; i++)
@@ -503,8 +500,8 @@ InitAuxiliaryProcess(void)
 	SpinLockRelease(ProcStructLock);
 
 	/*
-	 * Initialize all fields of MyProc, except for those previously initialized
-	 * by InitProcGlobal.
+	 * Initialize all fields of MyProc, except for those previously
+	 * initialized by InitProcGlobal.
 	 */
 	SHMQueueElemInit(&(MyProc->links));
 	MyProc->waitStatus = STATUS_OK;
@@ -524,7 +521,7 @@ InitAuxiliaryProcess(void)
 #ifdef USE_ASSERT_CHECKING
 	if (assert_enabled)
 	{
-		int i;
+		int			i;
 
 		/* Last process should have released all locks. */
 		for (i = 0; i < NUM_LOCK_PARTITIONS; i++)
@@ -625,6 +622,9 @@ HaveNFreeProcs(int n)
 	return (n <= 0);
 }
 
+/*
+ * Check if the current process is awaiting a lock.
+ */
 bool
 IsWaitingForLock(void)
 {
@@ -697,8 +697,11 @@ LockErrorCleanup(void)
  * ProcReleaseLocks() -- release locks associated with current transaction
  *			at main transaction commit or abort
  *
- * At main transaction commit, we release all locks except session locks.
+ * At main transaction commit, we release standard locks except session locks.
  * At main transaction abort, we release all locks including session locks.
+ *
+ * Advisory locks are released only if they are transaction-level;
+ * session-level holds remain, whether this is a commit or not.
  *
  * At subtransaction commit, we don't release any locks (so this func is not
  * needed at all); we will defer the releasing to the parent transaction.
@@ -713,10 +716,9 @@ ProcReleaseLocks(bool isCommit)
 		return;
 	/* If waiting, get off wait queue (should only be needed after error) */
 	LockErrorCleanup();
-	/* Release locks */
+	/* Release standard locks, including session-level if aborting */
 	LockReleaseAll(DEFAULT_LOCKMETHOD, !isCommit);
-
-	/* Release transaction level advisory locks */
+	/* Release transaction-level advisory locks */
 	LockReleaseAll(USER_LOCKMETHOD, false);
 }
 
@@ -749,7 +751,7 @@ ProcKill(int code, Datum arg)
 #ifdef USE_ASSERT_CHECKING
 	if (assert_enabled)
 	{
-		int i;
+		int			i;
 
 		/* Last process should have released all locks. */
 		for (i = 0; i < NUM_LOCK_PARTITIONS; i++)
@@ -1029,8 +1031,8 @@ ProcSleep(LOCALLOCK *locallock, LockMethod lockMethodTable)
 	/*
 	 * Also, now that we will successfully clean up after an ereport, it's
 	 * safe to check to see if there's a buffer pin deadlock against the
-	 * Startup process.  Of course, that's only necessary if we're doing
-	 * Hot Standby and are not the Startup process ourselves.
+	 * Startup process.  Of course, that's only necessary if we're doing Hot
+	 * Standby and are not the Startup process ourselves.
 	 */
 	if (RecoveryInProgress() && !InRecovery)
 		CheckRecoveryConflictDeadlock();

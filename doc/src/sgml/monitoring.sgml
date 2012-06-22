@@ -48,23 +48,27 @@
 
 <screen>
 $ ps auxww | grep ^postgres
-postgres   960  0.0  1.1  6104 1480 pts/1    SN   13:17   0:00 postgres -i
-postgres   963  0.0  1.1  7084 1472 pts/1    SN   13:17   0:00 postgres: writer process
-postgres   965  0.0  1.1  6152 1512 pts/1    SN   13:17   0:00 postgres: stats collector process
-postgres   998  0.0  2.3  6532 2992 pts/1    SN   13:18   0:00 postgres: tgl runbug 127.0.0.1 idle
-postgres  1003  0.0  2.4  6532 3128 pts/1    SN   13:19   0:00 postgres: tgl regression [local] SELECT waiting
-postgres  1016  0.1  2.4  6532 3080 pts/1    SN   13:19   0:00 postgres: tgl regression [local] idle in transaction
+postgres  15551  0.0  0.1  57536  7132 pts/0    S    18:02   0:00 postgres -i
+postgres  15554  0.0  0.0  57536  1184 ?        Ss   18:02   0:00 postgres: writer process
+postgres  15555  0.0  0.0  57536   916 ?        Ss   18:02   0:00 postgres: checkpointer process
+postgres  15556  0.0  0.0  57536   916 ?        Ss   18:02   0:00 postgres: wal writer process
+postgres  15557  0.0  0.0  58504  2244 ?        Ss   18:02   0:00 postgres: autovacuum launcher process
+postgres  15558  0.0  0.0  17512  1068 ?        Ss   18:02   0:00 postgres: stats collector process
+postgres  15582  0.0  0.0  58772  3080 ?        Ss   18:04   0:00 postgres: joe runbug 127.0.0.1 idle
+postgres  15606  0.0  0.0  58772  3052 ?        Ss   18:07   0:00 postgres: tgl regression [local] SELECT waiting
+postgres  15610  0.0  0.0  58772  3056 ?        Ss   18:07   0:00 postgres: tgl regression [local] idle in transaction
 </screen>
 
    (The appropriate invocation of <command>ps</> varies across different
    platforms, as do the details of what is shown.  This example is from a
    recent Linux system.)  The first process listed here is the
    master server process.  The command arguments
-   shown for it are the same ones used when it was launched.  The next two
+   shown for it are the same ones used when it was launched.  The next five
    processes are background worker processes automatically launched by the
    master process.  (The <quote>stats collector</> process will not be present
-   if you have set
-   the system not to start the statistics collector.)  Each of the remaining
+   if you have set the system not to start the statistics collector; likewise
+   the <quote>autovacuum launcher</> process can be disabled.)
+   Each of the remaining
    processes is a server process handling one client connection.  Each such
    process sets its command line display in the form
 
@@ -79,8 +83,12 @@ postgres: <replaceable>user</> <replaceable>database</> <replaceable>host</> <re
   or a command type name such as <literal>SELECT</>.  Also,
   <literal>waiting</> is appended if the server process is presently waiting
   on a lock held by another session.  In the above example we can infer
-  that process 1003 is waiting for process 1016 to complete its transaction and
-  thereby release some lock.
+  that process 15606 is waiting for process 15610 to complete its transaction
+  and thereby release some lock.  (Process 15610 must be the blocker, because
+  there is no other active session.  In more complicated cases it would be
+  necessary to look into the
+  <link linkend="view-pg-locks"><structname>pg_locks</structname></link>
+  system view to determine who is blocking whom.)
   </para>
 
   <para>
@@ -202,7 +210,7 @@ postgres: <replaceable>user</> <replaceable>database</> <replaceable>host</> <re
    the collector just before going idle; so a query or transaction still in
    progress does not affect the displayed totals.  Also, the collector itself
    emits a new report at most once per <varname>PGSTAT_STAT_INTERVAL</varname>
-   milliseconds (500 msec unless altered while building the server).  So the
+   milliseconds (500 ms unless altered while building the server).  So the
    displayed information lags behind actual activity.  However, current-query
    information collected by <varname>track_activities</varname> is
    always up-to-date.
@@ -464,7 +472,7 @@ postgres: <replaceable>user</> <replaceable>database</> <replaceable>host</> <re
 
 
   <table id="pg-stat-activity-view" xreflabel="pg_stat_activity">
-   <title>pg_stat_activity view</title>
+   <title><structname>pg_stat_activity</structname> View</title>
 
    <tgroup cols="3">
     <thead>
@@ -641,7 +649,7 @@ postgres: <replaceable>user</> <replaceable>database</> <replaceable>host</> <re
   </note>
 
   <table id="pg-stat-bgwriter-view" xreflabel="pg_stat_bgwriter">
-   <title>pg_stat_bgwriter view</title>
+   <title><structname>pg_stat_bgwriter</structname> View</title>
 
    <tgroup cols="3">
     <thead>
@@ -665,7 +673,7 @@ postgres: <replaceable>user</> <replaceable>database</> <replaceable>host</> <re
      </row>
      <row>
       <entry><structfield>checkpoint_write_time</></entry>
-      <entry><type>bigint</type></entry>
+      <entry><type>double precision</type></entry>
       <entry>
         Total amount of time that has been spent in the portion of
         checkpoint processing where files are written to disk, in milliseconds
@@ -673,7 +681,7 @@ postgres: <replaceable>user</> <replaceable>database</> <replaceable>host</> <re
      </row>
      <row>
       <entry><structfield>checkpoint_sync_time</></entry>
-      <entry><type>bigint</type></entry>
+      <entry><type>double precision</type></entry>
       <entry>
         Total amount of time that has been spent in the portion of
         checkpoint processing where files are synchronized to disk, in
@@ -728,7 +736,7 @@ postgres: <replaceable>user</> <replaceable>database</> <replaceable>host</> <re
   </para>
 
   <table id="pg-stat-database-view" xreflabel="pg_stat_database">
-   <title>pg_stat_database view</title>
+   <title><structname>pg_stat_database</structname> View</title>
    <tgroup cols="3">
     <thead>
     <row>
@@ -779,7 +787,7 @@ postgres: <replaceable>user</> <replaceable>database</> <replaceable>host</> <re
      <entry><type>bigint</></entry>
      <entry>Number of times disk blocks were found already in the buffer
       cache, so that a read was not necessary (this only includes hits in the
-      PostgreSQL buffer cache, not the operating system's filesystem cache)
+      PostgreSQL buffer cache, not the operating system's file system cache)
      </entry>
     </row>
     <row>
@@ -840,13 +848,13 @@ postgres: <replaceable>user</> <replaceable>database</> <replaceable>host</> <re
     </row>
     <row>
      <entry><structfield>blk_read_time</></entry>
-     <entry><type>bigint</></entry>
+     <entry><type>double precision</></entry>
      <entry>Time spent reading data file blocks by backends in this database,
       in milliseconds</entry>
     </row>
     <row>
      <entry><structfield>blk_write_time</></entry>
-     <entry><type>bigint</></entry>
+     <entry><type>double precision</></entry>
      <entry>Time spent writing data file blocks by backends in this database,
       in milliseconds</entry>
     </row>
@@ -865,7 +873,7 @@ postgres: <replaceable>user</> <replaceable>database</> <replaceable>host</> <re
   </para>
 
   <table id="pg-stat-all-tables-view" xreflabel="pg_stat_all_tables">
-   <title>pg_stat_all_tables view</title>
+   <title><structname>pg_stat_all_tables</structname> View</title>
    <tgroup cols="3">
     <thead>
     <row>
@@ -1003,7 +1011,7 @@ postgres: <replaceable>user</> <replaceable>database</> <replaceable>host</> <re
   </para>
 
   <table id="pg-stat-all-indexes-view" xreflabel="pg_stat_all_indexes">
-   <title>pg_stat_all_indexes view</title>
+   <title><structname>pg_stat_all_indexes</structname> View</title>
    <tgroup cols="3">
     <thead>
     <row>
@@ -1096,7 +1104,7 @@ postgres: <replaceable>user</> <replaceable>database</> <replaceable>host</> <re
   </note>
 
   <table id="pg-statio-all-tables-view" xreflabel="pg_statio_all_tables">
-   <title>pg_statio_all_tables view</title>
+   <title><structname>pg_statio_all_tables</structname> View</title>
    <tgroup cols="3">
     <thead>
     <row>
@@ -1177,7 +1185,7 @@ postgres: <replaceable>user</> <replaceable>database</> <replaceable>host</> <re
   </para>
 
   <table id="pg-statio-all-indexes-view" xreflabel="pg_statio_all_indexes">
-   <title>pg_statio_all_indexes view</title>
+   <title><structname>pg_statio_all_indexes</structname> View</title>
    <tgroup cols="3">
     <thead>
     <row>
@@ -1238,7 +1246,7 @@ postgres: <replaceable>user</> <replaceable>database</> <replaceable>host</> <re
   </para>
 
   <table id="pg-statio-all-sequences-view" xreflabel="pg_statio_all_sequences">
-   <title>pg_statio_all_sequences view</title>
+   <title><structname>pg_statio_all_sequences</structname> View</title>
    <tgroup cols="3">
     <thead>
     <row>
@@ -1285,7 +1293,7 @@ postgres: <replaceable>user</> <replaceable>database</> <replaceable>host</> <re
   </para>
 
   <table id="pg-stat-user-functions-view" xreflabel="pg_stat_user_functions">
-   <title>pg_stat_user_functions view</title>
+   <title><structname>pg_stat_user_functions</structname> View</title>
    <tgroup cols="3">
     <thead>
     <row>
@@ -1318,13 +1326,13 @@ postgres: <replaceable>user</> <replaceable>database</> <replaceable>host</> <re
     </row>
     <row>
      <entry><structfield>total_time</></entry>
-     <entry><type>bigint</></entry>
+     <entry><type>double precision</></entry>
      <entry>Total time spent in this function and all other functions
      called by it, in milliseconds</entry>
     </row>
     <row>
      <entry><structfield>self_time</></entry>
-     <entry><type>bigint</></entry>
+     <entry><type>double precision</></entry>
      <entry>Total time spent in this function itself, not including
      other functions called by it, in milliseconds</entry>
     </row>
@@ -1340,7 +1348,7 @@ postgres: <replaceable>user</> <replaceable>database</> <replaceable>host</> <re
   </para>
 
   <table id="pg-stat-replication-view" xreflabel="pg_stat_replication">
-   <title>pg_stat_replication view</title>
+   <title><structname>pg_stat_replication</structname> View</title>
    <tgroup cols="3">
     <thead>
     <row>
@@ -1454,7 +1462,7 @@ postgres: <replaceable>user</> <replaceable>database</> <replaceable>host</> <re
   </para>
 
   <table id="pg-stat-database-conflicts-view" xreflabel="pg_stat_database_conflicts">
-   <title>pg_stat_database_conflicts view</title>
+   <title><structname>pg_stat_database_conflicts</structname> View</title>
    <tgroup cols="3">
     <thead>
     <row>
@@ -1534,8 +1542,6 @@ postgres: <replaceable>user</> <replaceable>database</> <replaceable>host</> <re
    The functions for per-function statistics take a function OID.
    Note that only tables, indexes, and functions in the current database
    can be seen with these functions.
-   It should also be noted that while the views present timing values in
-   milliseconds, the underlying functions report timings in microseconds.
   </para>
 
   <para>
