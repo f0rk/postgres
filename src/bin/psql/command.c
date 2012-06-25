@@ -1565,125 +1565,132 @@ do_connect(char *dbname, char *user, char *host, char *port)
 		/* attempt connection asynchronously */
 		n_conn = PQconnectStartParams(keywords, values, true);
 
-		if (sigsetjmp(sigint_interrupt_jmp, 1) != 0)
-		{
-			/* interrupted during connection attempt */
-			PQfinish(n_conn);
-			n_conn = NULL;
-		}
-		else
-		{
-			time_t		end_time = -1;
+		/*
+		 * if we get CONNECTION_BAD, PQconnectStartParams has failed, so don't
+		 * bother even attempting to connect.
+		 */
+		if (PQstatus(n_conn) != CONNECTION_BAD) {
 
-			/*
-			 * maybe use a connection timeout. this code essentially stolen
-			 * from src/interfaces/libpq/fe-connect.c connectDBComplete
-			 */
-			if (PQconnectTimeout(n_conn) != NULL)
+			if (sigsetjmp(sigint_interrupt_jmp, 1) != 0)
 			{
-				int			timeout = atoi(PQconnectTimeout(n_conn));
-				if (timeout > 0)
-				{
-					/*
-					 * Rounding could cause connection to fail; need at least 2 secs
-					 */
-					if (timeout < 2)
-						timeout = 2;
-					/* calculate the finish time based on start + timeout */
-					end_time = time(NULL) + timeout;
-				}
+				/* interrupted during connection attempt */
+				PQfinish(n_conn);
+				n_conn = NULL;
 			}
-
-			while(end_time < 0 || time(NULL) < end_time)
+			else
 			{
-				int			poll_res;
-				int			rc;
-				fd_set		read_mask,
-							write_mask;
-				struct timeval timeout;
-				struct timeval *ptr_timeout;
-
-				poll_res = PQconnectPoll(n_conn);
-				if (poll_res == PGRES_POLLING_OK ||
-					poll_res == PGRES_POLLING_FAILED)
-				{
-					break;
-				}
-
-				if (poll_res == PGRES_POLLING_READING)
-					FD_SET(PQsocket(n_conn), &read_mask);
-				if (poll_res == PGRES_POLLING_WRITING)
-					FD_SET(PQsocket(n_conn), &write_mask);
+				time_t		end_time = -1;
 
 				/*
-				 * Compute appropriate timeout interval. essentially stolen
-				 * from src/interfaces/libpq/fe-misc.c pqSocketPoll. Maybe
-				 * that function could be made public? we could then replace
-				 * the whole inside of this while loop, assuming it is safe
-				 * to longjmp out from there.
+				 * maybe use a connection timeout. this code essentially stolen
+				 * from src/interfaces/libpq/fe-connect.c connectDBComplete
 				 */
-				if (end_time == ((time_t) -1))
-					ptr_timeout = NULL;
-				else
+				if (PQconnectTimeout(n_conn) != NULL)
 				{
-					time_t      now = time(NULL);
-
-					if (end_time > now)
-						timeout.tv_sec = end_time - now;
-					else
-						timeout.tv_sec = 0;
-					timeout.tv_usec = 0;
-					ptr_timeout = &timeout;
+					int			timeout = atoi(PQconnectTimeout(n_conn));
+					if (timeout > 0)
+					{
+						/*
+						 * Rounding could cause connection to fail; need at least 2 secs
+						 */
+						if (timeout < 2)
+							timeout = 2;
+						/* calculate the finish time based on start + timeout */
+						end_time = time(NULL) + timeout;
+					}
 				}
 
-				sigint_interrupt_enabled = true;
-				if (cancel_pressed)
+				while(end_time < 0 || time(NULL) < end_time)
+				{
+					int			poll_res;
+					int			rc;
+					fd_set		read_mask,
+								write_mask;
+					struct timeval timeout;
+					struct timeval *ptr_timeout;
+
+					poll_res = PQconnectPoll(n_conn);
+					if (poll_res == PGRES_POLLING_OK ||
+						poll_res == PGRES_POLLING_FAILED)
+					{
+						break;
+					}
+
+					if (poll_res == PGRES_POLLING_READING)
+						FD_SET(PQsocket(n_conn), &read_mask);
+					if (poll_res == PGRES_POLLING_WRITING)
+						FD_SET(PQsocket(n_conn), &write_mask);
+
+					/*
+					 * Compute appropriate timeout interval. essentially stolen
+					 * from src/interfaces/libpq/fe-misc.c pqSocketPoll. Maybe
+					 * that function could be made public? we could then replace
+					 * the whole inside of this while loop, assuming it is safe
+					 * to longjmp out from there.
+					 */
+					if (end_time == ((time_t) -1))
+						ptr_timeout = NULL;
+					else
+					{
+						time_t      now = time(NULL);
+
+						if (end_time > now)
+							timeout.tv_sec = end_time - now;
+						else
+							timeout.tv_sec = 0;
+						timeout.tv_usec = 0;
+						ptr_timeout = &timeout;
+					}
+
+					sigint_interrupt_enabled = true;
+					if (cancel_pressed)
+					{
+						PQfinish(n_conn);
+						n_conn = NULL;
+						sigint_interrupt_enabled = false;
+						break;
+					}
+					rc = select(PQsocket(n_conn) + 1,
+								&read_mask, &write_mask, NULL,
+								ptr_timeout);
+					sigint_interrupt_enabled = false;
+
+					if (rc < 0 && errno != EINTR)
+						break;
+				}
+
+				if (PQstatus(n_conn) != CONNECTION_OK &&
+					end_time > 0 && time(NULL) >= end_time)
 				{
 					PQfinish(n_conn);
 					n_conn = NULL;
-					sigint_interrupt_enabled = false;
-					break;
+					fputs(_("timeout expired\n"), stderr);
 				}
-				rc = select(PQsocket(n_conn) + 1,
-							&read_mask, &write_mask, NULL,
-							ptr_timeout);
-				sigint_interrupt_enabled = false;
-
-				if (rc < 0 && errno != EINTR)
-					break;
 			}
 
-			if (PQstatus(n_conn) != CONNECTION_OK &&
-				end_time > 0 && time(NULL) >= end_time)
+			free(keywords);
+			free(values);
+
+			/* We can immediately discard the password -- no longer needed */
+			if (password)
+			{
+				free(password);
+				password = NULL;
+			}
+
+			if (PQstatus(n_conn) == CONNECTION_OK)
+				break;
+
+			/*
+			 * Connection attempt failed; either retry the connection attempt with
+			 * a new password, or give up.
+			 */
+			if (PQconnectionNeedsPassword(n_conn) && pset.getPassword != TRI_NO)
 			{
 				PQfinish(n_conn);
-				n_conn = NULL;
-				fputs(_("timeout expired\n"), stderr);
+				password = prompt_for_password(user);
+				continue;
 			}
-		}
-
-		free(keywords);
-		free(values);
-
-		/* We can immediately discard the password -- no longer needed */
-		if (password)
-		{
-			free(password);
-			password = NULL;
-		}
-
-		if (PQstatus(n_conn) == CONNECTION_OK)
-			break;
-
-		/*
-		 * Connection attempt failed; either retry the connection attempt with
-		 * a new password, or give up.
-		 */
-		if (PQconnectionNeedsPassword(n_conn) && pset.getPassword != TRI_NO)
-		{
-			PQfinish(n_conn);
-			password = prompt_for_password(user);
-			continue;
 		}
 
 		/*
