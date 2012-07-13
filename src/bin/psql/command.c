@@ -1569,8 +1569,8 @@ do_connect(char *dbname, char *user, char *host, char *port)
 		 * if we get CONNECTION_BAD, PQconnectStartParams has failed, so don't
 		 * bother even attempting to connect.
 		 */
-		if (PQstatus(n_conn) != CONNECTION_BAD) {
-
+		if (PQstatus(n_conn) != CONNECTION_BAD)
+		{
 			if (sigsetjmp(sigint_interrupt_jmp, 1) != 0)
 			{
 				/* interrupted during connection attempt */
@@ -1591,11 +1591,16 @@ do_connect(char *dbname, char *user, char *host, char *port)
 					if (timeout > 0)
 					{
 						/*
-						 * Rounding could cause connection to fail; need at least 2 secs
+						 * Rounding could cause connection to fail; need at
+						 * least 2 secs
 						 */
 						if (timeout < 2)
 							timeout = 2;
-						/* calculate the finish time based on start + timeout */
+
+						/*
+						 * calculate the finish time based on start +
+						 * timeout
+						 */
 						end_time = time(NULL) + timeout;
 					}
 				}
@@ -1627,9 +1632,9 @@ do_connect(char *dbname, char *user, char *host, char *port)
 					/*
 					 * Compute appropriate timeout interval. essentially stolen
 					 * from src/interfaces/libpq/fe-misc.c pqSocketPoll. Maybe
-					 * that function could be made public? we could then replace
-					 * the whole inside of this while loop, assuming it is safe
-					 * to longjmp out from there.
+					 * that function could be made public? we could then
+					 * replace the whole inside of this while loop, assuming it
+					 * is safe to longjmp out from there.
 					 */
 					if (end_time == ((time_t) -1))
 						ptr_timeout = NULL;
@@ -1685,8 +1690,8 @@ do_connect(char *dbname, char *user, char *host, char *port)
 				break;
 
 			/*
-			 * Connection attempt failed; either retry the connection attempt with
-			 * a new password, or give up.
+			 * Connection attempt failed; either retry the connection attempt
+			 * with a new password, or give up.
 			 */
 			if (PQconnectionNeedsPassword(n_conn) && pset.getPassword != TRI_NO)
 			{
