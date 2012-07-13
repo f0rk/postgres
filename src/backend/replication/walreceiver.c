@@ -68,7 +68,7 @@ walrcv_disconnect_type walrcv_disconnect = NULL;
 #define NAPTIME_PER_CYCLE 100	/* max sleep time between cycles (100ms) */
 
 /*
- * These variables are used similarly to openLogFile/Id/Seg/Off,
+ * These variables are used similarly to openLogFile/SegNo/Off,
  * but for walreceiver to write the XLOG. recvFileTLI is the TimeLineID
  * corresponding the filename of recvFile, used for error messages.
  */
@@ -280,6 +280,11 @@ WalReceiverMain(void)
 	EnableWalRcvImmediateExit();
 	walrcv_connect(conninfo, startpoint);
 	DisableWalRcvImmediateExit();
+
+	/* Initialize LogstreamResult, reply_message and feedback_message */
+	LogstreamResult.Write = LogstreamResult.Flush = GetXLogReplayRecPtr(NULL);
+	MemSet(&reply_message, 0, sizeof(reply_message));
+	MemSet(&feedback_message, 0, sizeof(feedback_message));
 
 	/* Loop until end-of-streaming or error */
 	for (;;)

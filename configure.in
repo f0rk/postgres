@@ -809,6 +809,16 @@ if test "$PORTNAME" = "win32"; then
   AC_CHECK_TOOL(WINDRES, windres, windres)
 fi
 
+AC_PROG_INSTALL
+# When Autoconf chooses install-sh as install program it tries to generate
+# a relative path to it in each makefile where it subsitutes it. This clashes
+# with our Makefile.global concept. This workaround helps.
+case $INSTALL in
+  *install-sh*) install_bin='';;
+  *) install_bin=$INSTALL;;
+esac
+AC_SUBST(install_bin)
+
 AC_PATH_PROG(TAR, tar)
 AC_PROG_LN_S
 AC_PROG_AWK
@@ -1197,7 +1207,7 @@ PGAC_VAR_INT_TIMEZONE
 AC_FUNC_ACCEPT_ARGTYPES
 PGAC_FUNC_GETTIMEOFDAY_1ARG
 
-AC_CHECK_FUNCS([cbrt dlopen fdatasync getifaddrs getpeerucred getrlimit memmove poll pstat readlink setproctitle setsid sigprocmask symlink towlower utime utimes waitpid wcstombs wcstombs_l])
+AC_CHECK_FUNCS([cbrt dlopen fdatasync getifaddrs getpeerucred getrlimit memmove poll pstat readlink setproctitle setsid sigprocmask symlink towlower utime utimes wcstombs wcstombs_l])
 
 AC_REPLACE_FUNCS(fseeko)
 case $host_os in

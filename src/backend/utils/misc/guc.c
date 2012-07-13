@@ -62,6 +62,7 @@
 #include "storage/bufmgr.h"
 #include "storage/standby.h"
 #include "storage/fd.h"
+#include "storage/proc.h"
 #include "storage/predicate.h"
 #include "tcop/tcopprot.h"
 #include "tsearch/ts_cache.h"
@@ -1721,7 +1722,7 @@ static struct config_int ConfigureNamesInt[] =
 
 	{
 		{"temp_file_limit", PGC_SUSET, RESOURCES_DISK,
-			gettext_noop("Limits the total size of all temp files used by each session."),
+			gettext_noop("Limits the total size of all temporary files used by each session."),
 			gettext_noop("-1 means no limit."),
 			GUC_UNIT_KB
 		},
@@ -2842,7 +2843,7 @@ static struct config_string ConfigureNamesString[] =
 
 	{
 		{"event_source", PGC_POSTMASTER, LOGGING_WHERE,
-			gettext_noop("Sets the application name used to identify"
+			gettext_noop("Sets the application name used to identify "
 						 "PostgreSQL messages in the event log."),
 			NULL
 		},

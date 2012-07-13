@@ -143,6 +143,17 @@ GetConnection(void)
 
 		tmpconn = PQconnectdbParams(keywords, values, true);
 
+		/*
+		 * If there is too little memory even to allocate the PGconn object
+		 * and PQconnectdbParams returns NULL, we call exit(1) directly.
+		 */
+		if (!tmpconn)
+		{
+			fprintf(stderr, _("%s: could not connect to server\n"),
+					progname);
+			exit(1);
+		}
+
 		if (PQstatus(tmpconn) == CONNECTION_BAD &&
 			PQconnectionNeedsPassword(tmpconn) &&
 			dbgetpassword != -1)
@@ -156,6 +167,9 @@ GetConnection(void)
 		{
 			fprintf(stderr, _("%s: could not connect to server: %s\n"),
 					progname, PQerrorMessage(tmpconn));
+			PQfinish(tmpconn);
+			free(values);
+			free(keywords);
 			return NULL;
 		}
 
