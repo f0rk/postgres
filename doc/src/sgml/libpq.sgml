@@ -436,8 +436,12 @@ switch(PQstatus(conn))
        The <literal>connect_timeout</literal> connection parameter is ignored
        when using <function>PQconnectPoll</function>; it is the application's
        responsibility to decide whether an excessive amount of time has elapsed.
-       Otherwise, <function>PQconnectStart</function> followed by a
-       <function>PQconnectPoll</function> loop is equivalent to
+       It is recommended to use <function>PQconnectTimeout</function> to get the
+       value of <literal>connect_timeout</literal> and use that as the timeout
+       in the application. That way the user gets the same timeout behavior
+       regardless of whether the application uses <function>PQconnectPoll</function>
+       or the blocking connection API. Otherwise, <function>PQconnectStart</function>
+       followed by a <function>PQconnectPoll</function> loop is equivalent to
        <function>PQconnectdb</function>.
       </para>
 
