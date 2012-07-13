@@ -1616,6 +1616,9 @@ do_connect(char *dbname, char *user, char *host, char *port)
 						break;
 					}
 
+					FD_ZERO(&read_mask);
+					FD_ZERO(&write_mask);
+
 					if (poll_res == PGRES_POLLING_READING)
 						FD_SET(PQsocket(n_conn), &read_mask);
 					if (poll_res == PGRES_POLLING_WRITING)
