@@ -1540,8 +1540,8 @@ do_connect(char *dbname, char *user, char *host, char *port)
 	while (true)
 	{
 #define PARAMS_ARRAY_SIZE	9
-		const char **keywords = pg_malloc(PARAMS_ARRAY_SIZE * sizeof(*keywords));
-		const char **values = pg_malloc(PARAMS_ARRAY_SIZE * sizeof(*values));
+		const char *keywords[PARAMS_ARRAY_SIZE];
+		const char *values[PARAMS_ARRAY_SIZE];
 
 		keywords[0] = "host";
 		values[0] = host;
@@ -1675,9 +1675,6 @@ do_connect(char *dbname, char *user, char *host, char *port)
 					fputs(_("timeout expired\n"), stderr);
 				}
 			}
-
-			free(keywords);
-			free(values);
 
 			/* We can immediately discard the password -- no longer needed */
 			if (password)
